@@ -1,11 +1,11 @@
 {
-    "name": "mtg_table",
-    "short_name": "mtg_table",
+    "name": "LifeStack",
+    "short_name": "LifeStack",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Compteur de partie pour Magic.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

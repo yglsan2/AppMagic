@@ -1,4 +1,4 @@
-# Table MTG
+# LifeStack
 
 Compteur de partie pour Magic. On pose le téléphone au milieu de la table, chacun lit son côté, et on joue.
 
@@ -38,7 +38,7 @@ Les préréglages mettent la vie de départ et les options au bon endroit. On pe
 | Briseur de serment | 2 à 4 | 20 |
 | Personnalisé | au choix | seuils réglables |
 
-Commander à deux, c’est l’EDH avec deux joueurs (40 et 21). Le Duel Commander est l’autre format, à part.
+Commander à deux garde les règles habituelles : 40 points de vie, et 21 points de dégâts de combat du même commandant. Le Duel Commander est l’autre partie à deux, à 20 points de vie.
 
 Planechase, Archennemi et les primes se cochent dans les options. Le chronomètre (alerte de tour ou pendule) est éteint tant qu’on ne l’active pas.
 
@@ -75,7 +75,7 @@ Sur cette machine, des scripts dans `scripts/` aident au build Android.
 
 ## Magic
 
-Magic: The Gathering est une marque de Wizards of the Coast. Table MTG est un projet fan, sans lien avec Wizards of the Coast.
+Magic: The Gathering est une marque de Wizards of the Coast. LifeStack est un projet fan, sans lien avec Wizards of the Coast.
 
 Les images de cartes viennent de Scryfall. Leurs conditions d’usage s’appliquent.
 

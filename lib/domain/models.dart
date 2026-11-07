@@ -85,13 +85,13 @@ const formatCatalog = <FormatInfo>[
   FormatInfo(
     format: MatchFormat.commander,
     label: 'Commander (EDH)',
-    detail: '40 PV · 2 à 8 joueurs · 21 dégâts par commandant',
+    detail: '40 points de vie · 2 à 8 joueurs · 21 dégâts du même commandant',
     help:
-        'Format le plus répandu : un commandant légendaire, deck de 100 cartes, '
-        '40 points de vie. 21 dégâts de combat du même commandant éliminent. '
-        'Aussi appelé EDH. La table classique est à 4, mais on peut jouer à 2 '
-        'avec exactement ces règles. Le Duel Commander (20 PV, sans les 21 '
-        'dégâts) est un autre format.',
+        'Un commandant et un deck de 100 cartes. Chacun commence à '
+        '40 points de vie. À quatre comme à deux, un joueur perd aussi '
+        's’il a reçu 21 points de dégâts de combat du même commandant. '
+        'Pour une partie à deux à 20 points de vie, sans cette règle, '
+        'choisissez Duel Commander.',
     startingLife: 40,
     commanderDamage: true,
     commanderTax: true,
@@ -105,10 +105,9 @@ const formatCatalog = <FormatInfo>[
     label: 'Traîtrise (Treachery)',
     detail: 'Commander + rôles secrets (Chef, Traître…)',
     help:
-        'Variante de Commander avec des rôles secrets (Chef / Leader, '
-        'Gardiens, Assassins, Traîtres). Les joueurs cherchent à gagner '
-        'selon leur camp. Les règles de vie et de commandant restent celles '
-        'du Commander.',
+        'Commander, avec des rôles secrets : Chef, Gardien, Assassin, '
+        'Traître. Chacun gagne selon son rôle. Les points de vie et le '
+        'commandant restent ceux du Commander.',
     startingLife: 40,
     commanderDamage: true,
     commanderTax: true,
@@ -122,10 +121,10 @@ const formatCatalog = <FormatInfo>[
     label: 'Duel Commander',
     detail: '2 joueurs · 20 PV · taxe · sans les 21 dégâts',
     help:
-        'Duel Commander, le format 1 contre 1 : toujours 2 joueurs, 20 PV, '
-        'taxe de commandant, sans le seuil de 21 dégâts. Plus rapide que '
-        'l’EDH. Pour une partie à deux avec les règles EDH (40 PV et 21 '
-        'dégâts), restez sur Commander et choisissez 2 joueurs.',
+        'Le face-à-face : toujours deux joueurs, 20 points de vie, avec la '
+        'taxe de commandant, et sans les 21 points de dégâts. Pour jouer à '
+        'deux avec 40 points de vie et cette règle des 21, restez sur '
+        'Commander et choisissez 2 joueurs.',
     startingLife: 20,
     commanderDamage: false,
     commanderTax: true,
@@ -139,9 +138,9 @@ const formatCatalog = <FormatInfo>[
     label: 'Bagarre (Brawl)',
     detail: '25 PV · dégâts de commandant · taxe',
     help:
-        'Brawl (Bagarre) : format à commandant plus restreint (souvent '
-        'Standard ou Historic), 25 PV, deck plus petit. Idéal pour des '
-        'parties rapides à deux, avec commandant et taxe.',
+        'Un commandant et un deck plus petit, souvent en Standard. '
+        '25 points de vie, avec la taxe. Plutôt une partie courte, '
+        'souvent à deux.',
     startingLife: 25,
     commanderDamage: true,
     commanderTax: true,
@@ -153,10 +152,9 @@ const formatCatalog = <FormatInfo>[
     label: 'Construit (60 cartes)',
     detail: '20 PV · deck préparé · sans commandant',
     help:
-        'Format construit (Standard, Moderne, Pioneer, Legacy…) : deck '
-        'préparé à l’avance, en général 60 cartes. 20 PV, pas de dégâts '
-        'ni taxe de commandant. Les règles de vie sont identiques au '
-        'mode Limité — seul le contexte de deck change.',
+        'Standard, Moderne, Pioneer, Legacy… Le deck est prêt avant '
+        'de s’asseoir, en général 60 cartes. 20 points de vie, sans '
+        'commandant.',
     startingLife: 20,
     commanderDamage: false,
     commanderTax: false,
@@ -168,9 +166,8 @@ const formatCatalog = <FormatInfo>[
     label: 'Limité (draft / scellé)',
     detail: '20 PV · deck du draft · sans commandant',
     help:
-        'Limité (draft, sealed) : deck assemblé sur place avec les cartes '
-        'ouvertes. 20 PV, sans commandant — mêmes compteurs que Construit. '
-        'Choisissez ce preset pour rappeler le contexte limité à la table.',
+        'Draft ou scellé : le deck se monte sur place, avec les boosters '
+        'ouverts à la table. 20 points de vie, sans commandant.',
     startingLife: 20,
     commanderDamage: false,
     commanderTax: false,
@@ -182,10 +179,10 @@ const formatCatalog = <FormatInfo>[
     label: 'Géant à deux têtes (2HG)',
     detail: '30 PV partagés · équipes de 2',
     help:
-        'Two-Headed Giant (Géant à deux têtes) : deux équipes de deux. '
-        'Chaque équipe partage une seule jauge de vie (ici 30). Les '
-        'dégâts de commandant restent suivis par joueur. Les handicaps '
-        'individuels sont désactivés (vie commune).',
+        'Deux équipes de deux. Chaque équipe a un seul total de points '
+        'de vie, ici 30. Les dégâts de commandant restent comptés pour '
+        'chaque joueur. Les bonus de deck sont coupés, parce que la vie '
+        'est commune.',
     startingLife: 30,
     commanderDamage: true,
     commanderTax: true,
@@ -197,10 +194,10 @@ const formatCatalog = <FormatInfo>[
     label: 'Briseur de serment (Oathbreaker)',
     detail: '20 PV · commandant + sort signature',
     help:
-        'Oathbreaker (Briseur de serment) : chaque joueur a un planeswalker '
-        'commandant et un sort signature. 20 PV, taxe sur les relances '
-        'depuis la zone de commandement. Format multi-joueurs plus court '
-        'que le Commander classique.',
+        'Chaque joueur a un planeswalker comme commandant, et un sort '
+        'signature. 20 points de vie. La taxe s’ajoute quand on le lance '
+        'depuis la zone de commandement. Partie plus courte que le '
+        'Commander.',
     startingLife: 20,
     commanderDamage: true,
     commanderTax: true,
@@ -212,8 +209,9 @@ const formatCatalog = <FormatInfo>[
     label: 'Personnalisé',
     detail: 'Points de vie, seuils et options au choix',
     help:
-        'Tout régler à la main : vie de départ, dégâts de commandant, '
-        'taxe, Planechase, Archennemi, etc. Utile pour des règles maison.',
+        'Tout se règle à la main : points de vie, dégâts de commandant, '
+        'taxe, Course planaire, Archennemi. Pratique pour une règle '
+        'maison.',
     startingLife: 40,
     commanderDamage: true,
     commanderTax: true,
@@ -821,7 +819,7 @@ class Game {
 
   String get currentScheme {
     if (schemes.isEmpty) {
-      return schemeNumber > 0 ? 'Schéma $schemeNumber' : 'Schéma';
+      return schemeNumber > 0 ? 'Stratagème $schemeNumber' : 'Stratagème';
     }
     final index = schemeIndex.clamp(0, schemes.length - 1);
     return schemes[index];

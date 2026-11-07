@@ -364,7 +364,7 @@ String effectForScheme(String name) {
   for (final scheme in officialSchemes) {
     if (scheme.name == name) return scheme.effect;
   }
-  return 'Résolvez le schéma selon sa carte Archenemy.';
+  return 'Résolvez le stratagème selon sa carte.';
 }
 
 BountyCard bountyAtLevel(int level) {

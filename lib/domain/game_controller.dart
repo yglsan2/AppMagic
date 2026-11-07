@@ -1078,15 +1078,15 @@ class GameController extends ChangeNotifier {
 
   void nextScheme() {
     if (game.schemes.isNotEmpty) {
-      _commit('Schéma suivant', () {
+      _commit('Stratagème suivant', () {
         game.schemeIndex = (game.schemeIndex + 1) % game.schemes.length;
         game.schemeNumber += 1;
       });
       flash(game.currentScheme);
       return;
     }
-    _commit('Schéma ${game.schemeNumber + 1}', () => game.schemeNumber += 1);
-    flash('Schéma ${game.schemeNumber}');
+    _commit('Stratagème ${game.schemeNumber + 1}', () => game.schemeNumber += 1);
+    flash('Stratagème ${game.schemeNumber}');
   }
 
   void raiseBounty() {

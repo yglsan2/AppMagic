@@ -27,7 +27,7 @@ Future<PlayerProfile?> showPickProfileSheet(
                   child: Center(
                     child: Text(
                       'Aucun profil enregistré.\n'
-                      'Sur un joueur du salon : « Sauver profil ».',
+                      'À côté d’un nom, touchez l’icône Sauver le profil.',
                       textAlign: TextAlign.center,
                     ),
                   ),

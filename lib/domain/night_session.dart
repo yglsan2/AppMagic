@@ -418,7 +418,7 @@ class NightSession {
 
   String buildRecap() {
     final buf = StringBuffer();
-    buf.writeln('Soirée Table MTG · $title');
+    buf.writeln('Soirée LifeStack · $title');
     buf.writeln('Code · $code');
     buf.writeln(
       'Durée · ${_fmt(elapsed)} · ${games.length} partie'
@@ -465,7 +465,7 @@ class NightSession {
       }
     }
     buf.writeln('');
-    buf.writeln('— Table MTG · soirée locale');
+    buf.writeln('— LifeStack · soirée locale');
     return buf.toString();
   }
 

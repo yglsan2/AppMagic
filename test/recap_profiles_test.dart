@@ -65,7 +65,7 @@ void main() {
     addTearDown(controller.dispose);
     controller.addLife(controller.game.players.first.id, -3);
     final text = buildJournalExport(controller);
-    expect(text, contains('Journal Table MTG'));
+    expect(text, contains('Journal LifeStack'));
     expect(text, contains('Fil PV'));
     expect(text, contains('Actions'));
     expect(text, contains('Ana'));

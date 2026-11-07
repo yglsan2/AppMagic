@@ -40,16 +40,16 @@ extension DeckBracketX on DeckBracket {
 
   String get help => switch (this) {
     DeckBracket.precon =>
-      'Deck tout prêt ou très casual. +10 PV pour compenser '
+      'Deck prêt à jouer, ou très tranquille. +10 points de vie '
           'face à des decks plus forts.',
     DeckBracket.budget =>
-      'Deck peu cher / low power. +5 PV de compensation.',
+      'Deck modeste. +5 points de vie.',
     DeckBracket.fair =>
       'Même niveau que la table : aucun bonus ni malus de PV.',
     DeckBracket.strong =>
-      'Deck optimisé / high power. −5 PV pour équilibrer.',
+      'Deck très optimisé. −5 points de vie pour rééquilibrer.',
     DeckBracket.cedh =>
-      'cEDH : ultra compétitif, souvent très cher. −10 PV.',
+      'Deck de tournoi, souvent très cher. −10 points de vie.',
     DeckBracket.custom =>
       'Valeur libre : réglez le bonus ou malus de PV exactement '
           'comme la table le souhaite (−30 à +30).',

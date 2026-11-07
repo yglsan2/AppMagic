@@ -42,9 +42,9 @@ class _PrivacySheet extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Table MTG fonctionne sans compte et sans serveur à nous. '
-          'Les données restent sur cet appareil, sauf les appels volontaires '
-          'à Scryfall (recherche / illustrations).',
+          'LifeStack fonctionne sans compte et sans serveur propre. '
+          'Les données restent sur cet appareil, sauf quand vous cherchez '
+          'une carte ou une illustration sur Scryfall.',
           style: TextStyle(color: Colors.white.withValues(alpha: 0.75)),
         ),
         const SizedBox(height: 16),
@@ -60,7 +60,7 @@ class _PrivacySheet extends StatelessWidget {
               '• Réglages et partie en cours\n'
               '• Profils joueurs, historique de parties, soirée multi-tables\n'
               '• Cache Scryfall (noms / textes / URLs d’images)\n'
-              '• Journal d’erreurs technique (mémoire, non envoyé)',
+              '• Journal technique d’erreurs (reste sur l’appareil, rien n’est envoyé)',
         ),
         const _Block(
           title: 'Réseau',
@@ -86,11 +86,9 @@ class _PrivacySheet extends StatelessWidget {
         const _Block(
           title: 'Accessibilité (RGAA — état)',
           body:
-              'Interface en français, tailles de texte système respectées '
-              '(plafonnées pour la lisibilité table), contrastes sombres '
-              'élevés, labels sur actions principales. '
-              'Pistes d’amélioration : parcours TalkBack exhaustif, '
-              'alternatives textuelles sur toutes les images.',
+              'Texte en français. La taille suit celle du téléphone, dans une '
+              'limite lisible à table. Contraste élevé sur fond sombre, '
+              'et un libellé sur les actions principales.',
         ),
         const SizedBox(height: 12),
         if (onClearCacheOnly != null)

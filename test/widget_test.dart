@@ -242,12 +242,12 @@ void main() {
     expect(find.byKey(const ValueKey('player-count-1')), findsNothing);
     expect(find.byKey(const ValueKey('player-count-8')), findsOneWidget);
     expect(find.byType(TextField), findsNWidgets(8));
-    expect(find.text('Commander à 2'), findsNothing);
+    expect(find.text('Commander à deux'), findsNothing);
 
     await tester.ensureVisible(find.byKey(const ValueKey('player-count-2')));
     await tester.tap(find.byKey(const ValueKey('player-count-2')));
     await tester.pumpAndSettle();
-    expect(find.text('Commander à 2'), findsOneWidget);
+    expect(find.text('Commander à deux'), findsOneWidget);
     expect(find.byType(TextField), findsNWidgets(4));
 
     await tester.ensureVisible(find.textContaining('Lancer'));

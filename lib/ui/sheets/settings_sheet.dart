@@ -54,8 +54,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           contentPadding: EdgeInsets.zero,
           title: Text('Dégâts de commandant et vie'),
           subtitle: Text(
-            'Toujours liés : un dégât de combat de commandant retire aussi '
-            '1 PV (règles Magic). Corriger ne rend que les PV vraiment retirés.',
+            'Un point de dégâts de combat d’un commandant retire aussi '
+            '1 point de vie. Si vous corrigez, seuls les points vraiment '
+            'retirés reviennent.',
           ),
         ),
         SwitchListTile(
@@ -68,7 +69,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text(
-            'Remettre le storm (enchaînement) à zéro en fin de tour',
+            'Remettre la tempête (storm) à zéro en fin de tour',
           ),
           value: _settings.resetStormOnTurn,
           onChanged: (value) =>
@@ -95,7 +96,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Fil des décomptes de vie'),
           subtitle: const Text(
-            'Bandeau des ±PV · toucher pour tout l’historique',
+            'Bandeau des derniers points. Touchez-le pour tout l’historique.',
           ),
           value: _settings.showLifeFeed,
           onChanged: (value) =>
@@ -114,10 +115,10 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Proposer les handicaps au salon'),
+          title: const Text('Proposer les handicaps avant la partie'),
           subtitle: const Text(
-            'Mémorise l’option : paliers ou PV libres (−30…+30). '
-            'À activer aussi sur la fiche partie.',
+            'Paliers, ou points de vie libres de −30 à +30. '
+            'À cocher aussi sur l’écran de départ.',
           ),
           value: _settings.handicapsEnabled,
           onChanged: (value) =>
@@ -131,7 +132,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ButtonSegment(value: ViewMode.auto, label: Text('Auto')),
             ButtonSegment(value: ViewMode.table, label: Text('Table')),
             ButtonSegment(value: ViewMode.list, label: Text('Liste')),
-            ButtonSegment(value: ViewMode.focus, label: Text('Focus')),
+            ButtonSegment(value: ViewMode.focus, label: Text('Gros plan')),
           ],
           selected: {_settings.viewMode},
           onSelectionChanged: (selection) =>
@@ -139,7 +140,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Focus : un siège en grand (bandeau pour changer sans passer le tour).',
+          'Gros plan : un joueur en grand. Le bandeau change de joueur sans passer le tour.',
           style: TextStyle(
             fontSize: 12,
             color: Colors.white.withValues(alpha: 0.5),

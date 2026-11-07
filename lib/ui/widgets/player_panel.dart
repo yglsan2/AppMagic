@@ -400,9 +400,9 @@ class _QuickStatus extends StatelessWidget {
             enabled: showTips,
             title: 'Monarque',
             message:
-                'Le monarque pioche une carte en plus à sa phase de pioche. '
-                'Si tu subis des dégâts de combat, l’attaquant devient '
-                'monarque. Un seul monarque à la table.',
+                'Le monarque pioche une carte au début de son étape de fin. '
+                'S’il subit des dégâts de combat, l’attaquant devient '
+                'monarque. Il n’y en a qu’un à la table.',
             child: _ToggleChip(
               icon: Icons.workspace_premium,
               label: 'Monarque',
@@ -418,9 +418,9 @@ class _QuickStatus extends StatelessWidget {
             enabled: showTips,
             title: 'Initiative',
             message:
-                'Initiative (sous-terrains) : le joueur explore le donjon. '
-                'Si tu subis des dégâts de combat, l’attaquant prend '
-                'l’initiative. Une seule initiative à la table.',
+                'Celui qui a l’initiative s’aventure dans le donjon. '
+                'S’il subit des dégâts de combat, l’attaquant la prend. '
+                'Une seule personne l’a à la fois.',
             child: _ToggleChip(
               icon: Icons.flag_outlined,
               label: 'Initiative',
@@ -437,8 +437,8 @@ class _QuickStatus extends StatelessWidget {
               enabled: showTips,
               title: 'Cité d’Or',
               message:
-                  'Bénédiction de la Cité d’Or : avantage permanent une '
-                  'fois obtenue. Toucher pour retirer si besoin.',
+                  'Bénédiction de la Cité d’Or : elle reste une fois obtenue. '
+                  'Touchez pour la retirer.',
               child: _ToggleChip(
                 icon: Icons.apartment,
                 label: 'Cité',
@@ -512,8 +512,8 @@ class _ResourceStrip extends StatelessWidget {
             enabled: showTips,
             title: 'Mana flottant',
             message:
-                'Mana non dépensé encore disponible. − retire 1, + ajoute '
-                '1 mana incolore (détail des couleurs dans Suivis).',
+                'Mana encore en réserve. − en retire 1, + ajoute '
+                '1 mana incolore. Les couleurs se règlent dans Suivis.',
             child: _StatusChip(
               label: '✦ $_manaTotal',
               active: _manaTotal > 0,
@@ -537,8 +537,8 @@ class _ResourceStrip extends StatelessWidget {
             enabled: showTips,
             title: 'Storm',
             message:
-                'Compteur d’enchaînement (storm) pour ce tour : nombre de '
-                'sorts déjà lancés. Souvent remis à 0 en fin de tour.',
+                'Tempête (storm) : nombre de sorts lancés pendant ce tour. '
+                'Souvent remis à zéro quand le tour se termine.',
             child: _StatusChip(
               label: 'Storm ${player.storm}',
               active: player.storm > 0,
@@ -559,9 +559,9 @@ class _ResourceStrip extends StatelessWidget {
                 enabled: showTips,
                 title: 'Taxe de commandant',
                 message:
-                    'Coût supplémentaire pour relancer ce commandant depuis '
-                    'la zone de commandement (+2 mana à chaque fois en '
-                    'général). + augmente la taxe, − la baisse.',
+                    'Mana en plus pour relancer ce commandant depuis '
+                    'la zone de commandement : +2 à chaque fois. '
+                    '+ augmente la taxe, − la baisse.',
                 child: _StatusChip(
                   label: player.commanders.length == 1
                       ? 'Taxe +${commander.tax}'

@@ -32,7 +32,7 @@ void main() {
   testWidgets('parcours salon, table, outils et retour', (tester) async {
     await boot(tester);
 
-    expect(find.text('Table MTG'), findsOneWidget);
+    expect(find.text('LifeStack'), findsOneWidget);
     expect(find.text('Commander (EDH)'), findsOneWidget);
 
     await tester.tap(find.text('Construit (60 cartes)'));

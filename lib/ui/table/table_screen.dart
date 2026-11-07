@@ -130,20 +130,22 @@ class _TableScreenState extends State<TableScreen> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Table MTG'),
+        title: const Text('LifeStack'),
         content: const SingleChildScrollView(
           child: Text(
             'Compteur de partie pour Magic. Les dégâts de chaque commandant '
-            'se suivent d’un doigt, y compris partenaires et backgrounds.\n\n'
-            'Journal de cartes optionnel via Scryfall (cache local) : '
-            'suggestions d’effets simples, confirmation avant application. '
-            'Pas un moteur de règles complet.\n\n'
-            'Table MTG est un contenu de fan non officiel, permis par la '
-            'politique Fan Content de Wizards of the Coast. Il n’est ni '
-            'approuvé ni sponsorisé par Wizards of the Coast. Les noms de '
+            'se comptent d’un geste, partenaires compris.\n\n'
+            'Le journal de cartes, en option, passe par Scryfall et reste '
+            'sur l’appareil : il propose les effets simples, et attend une '
+            'confirmation avant de toucher aux points de vie. Ce n’est pas '
+            'un moteur de règles complet.\n\n'
+            'LifeStack est un projet de fan, non officiel. Il suit la '
+            'politique Fan Content de Wizards of the Coast. Wizards of the '
+            'Coast ne l’approuve pas et ne le sponsorise pas. Les noms de '
             'cartes et les règles restent la propriété de Wizards of the Coast LLC.\n\n'
             'Recherche de cartes : Scryfall.\n\n'
-            'Vie privée : salon → « Vie privée » (données locales, effacement).',
+            'Vie privée : avant la partie, Outils, puis Vie privée. '
+            'Les données restent sur l’appareil, et on peut les effacer.',
           ),
         ),
         actions: [

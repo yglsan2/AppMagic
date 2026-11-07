@@ -107,7 +107,7 @@ class _TableMtgAppState extends State<TableMtgApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Table MTG',
+      title: 'LifeStack',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
       locale: const Locale('fr'),
@@ -136,7 +136,7 @@ class _TableMtgAppState extends State<TableMtgApp> {
             return const Scaffold(
               body: Center(
                 child: Text(
-                  'Table MTG',
+                  'LifeStack',
                   style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
                 ),
               ),

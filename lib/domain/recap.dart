@@ -11,7 +11,7 @@ String buildGameRecap({
   final standing = game.alive;
   final winner = game.winnerLabel();
   final buf = StringBuffer();
-  buf.writeln('📜 Récap Table MTG');
+  buf.writeln('📜 Récap LifeStack');
   buf.writeln(formatInfo(game.format).label);
   buf.writeln(
     'Durée · ${_formatDuration(duration)} · manche ${game.roundNumber}',
@@ -39,7 +39,7 @@ String buildGameRecap({
     buf.writeln('Plan · ${game.currentPlane}');
   }
   if (game.archenemy) {
-    buf.writeln('Schéma · ${game.currentScheme}');
+    buf.writeln('Stratagème · ${game.currentScheme}');
   }
   if (game.bounty) {
     buf.writeln('Prime · ${game.currentBounty.name}');
@@ -52,13 +52,13 @@ String buildGameRecap({
     }
   }
   buf.writeln('');
-  buf.writeln('— Table MTG · sans pub, local');
+  buf.writeln('— LifeStack · sans pub, local');
   return buf.toString();
 }
 
 String buildArchivedRecap(ArchivedGame game) {
   final buf = StringBuffer();
-  buf.writeln('📜 Récap Table MTG');
+  buf.writeln('📜 Récap LifeStack');
   buf.writeln(game.format);
   buf.writeln(
     'Durée · ${_formatDuration(Duration(seconds: game.durationSec))}',
@@ -85,7 +85,7 @@ String buildControllerRecap(GameController controller) {
 String buildJournalExport(GameController controller) {
   final game = controller.game;
   final buf = StringBuffer();
-  buf.writeln('Journal Table MTG');
+  buf.writeln('Journal LifeStack');
   buf.writeln(formatInfo(game.format).label);
   buf.writeln(
     'Manche ${game.roundNumber} · tour ${game.turnCount} · '
@@ -117,7 +117,7 @@ String buildJournalExport(GameController controller) {
     }
   }
   buf.writeln('');
-  buf.writeln('— Table MTG · local');
+  buf.writeln('— LifeStack · local');
   return buf.toString();
 }
 

@@ -231,32 +231,32 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                 _Memo(
                   title: 'Commander',
                   body:
-                      'Chaque joueur commence à 40 points de vie. 21 dégâts ou plus reçus d’un même commandant éliminent. Les dégâts de deux commandants différents ne s’additionnent pas pour ce seuil.',
+                      'Chacun commence à 40 points de vie. Un joueur perd s’il a reçu 21 points de dégâts ou plus d’un même commandant. Les dégâts de deux commandants différents ne se cumulent pas.',
                 ),
                 _Memo(
                   title: 'Plusieurs commandants',
                   body:
-                      'Partenaire, Friends forever, Partner with, un docteur et son compagnon, ou un background : chaque commandant a son propre compteur sur 21 et sa propre taxe. 15 + 15 de deux commandants différents n’éliminent pas. La taxe augmente de 2 à chaque lancer depuis la zone de commandement.',
+                      'Partenaire, Partenaire de, Amis pour la vie, un docteur et son compagnon, ou un background : chacun a son compteur de 21 et sa taxe. 15 points d’un commandant et 15 d’un autre ne font pas perdre. La taxe augmente de 2 à chaque lancement depuis la zone de commandement.',
                 ),
                 _Memo(
                   title: 'Duel Commander',
                   body:
-                      '20 points de vie. La taxe de commandant existe. Les dégâts de commandant ne font pas partie de ce format : le préréglage ne les suit pas, vous pouvez les réactiver au salon.',
+                      '20 points de vie, avec la taxe de commandant, sans les dégâts de commandant. Ce format ne les compte pas. Vous pouvez les réactiver dans Plus d’options, avant de lancer.',
                 ),
                 _Memo(
                   title: 'Autres départs',
                   body:
-                      'Bagarre (Brawl) : 25. Briseur de serment (Oathbreaker) : 20, avec un sort signature. Géant à deux têtes (2HG) : une vie d’équipe, ici 30. Les dégâts de commandant restent par joueur.',
+                      'Bagarre : 25 points de vie. Briseur de serment : 20, avec un sort signature. Géant à deux têtes : un total pour l’équipe, ici 30. Les dégâts de commandant restent comptés joueur par joueur.',
                 ),
                 _Memo(
                   title: 'Poison, monarque, initiative',
                   body:
-                      '10 marqueurs poison éliminent. Le monarque change de main quand un joueur lui inflige des dégâts de combat, et il pioche au début de sa fin de tour. L’initiative passe de la même façon, par des dégâts de combat.',
+                      'Dix marqueurs poison font perdre la partie. Le monarque pioche une carte au début de son étape de fin. S’il subit des dégâts de combat, l’attaquant devient monarque. L’initiative change de la même façon : elle passe à celui qui inflige les dégâts de combat.',
                 ),
                 _Memo(
                   title: 'Jour, nuit, dé planaire',
                   body:
-                      'Il devient nuit si le joueur actif n’a lancé aucun sort pendant son tour, et jour s’il en a lancé au moins deux. Le dé planaire a quatre faces vides, une planeswalk et une chaos.',
+                      'La partie passe en nuit si le joueur dont c’est le tour n’a lancé aucun sort. Elle repasse au jour s’il en a lancé au moins deux. Le dé planaire a quatre faces blanches, une planeswalk et une chaos.',
                 ),
                 _Memo(
                   title: 'Fin de tour',

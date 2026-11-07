@@ -321,8 +321,16 @@ class _SetupScreenState extends State<SetupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+              Center(
+                child: Image.asset(
+                  'assets/brand/lifestack.png',
+                  width: viewport.maxWidth < 400 ? 88 : 108,
+                  height: viewport.maxWidth < 400 ? 88 : 108,
+                ),
+              ),
+              const SizedBox(height: 14),
               Text(
-                'Table MTG',
+                'LifeStack',
                 style: TextStyle(
                   fontSize: titleSize,
                   fontWeight: FontWeight.w800,
@@ -331,32 +339,6 @@ class _SetupScreenState extends State<SetupScreen> {
                   color: const Color(0xFFF4F7FB),
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Sans pub, sans compte · tout reste sur cet appareil.',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.58),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _damage
-                    ? 'Chaque commandant adverse a ${widget.settings.commanderThreshold} points séparés. Touchez pour baisser.'
-                    : 'La vie au centre. Les extras restent derrière « ⋯ ».',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
-              ),
-              if (_damage) ...[
-                const SizedBox(height: 4),
-                Text(
-                  'Règle officielle : 21 dégâts de combat du même commandant éliminent. '
-                  'Chaque partenaire est suivi à part. La vie baisse aussi.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
               const SizedBox(height: 18),
               if (widget.resumeLabel != null) ...[
                 FilledButton.tonalIcon(
@@ -439,8 +421,8 @@ class _SetupScreenState extends State<SetupScreen> {
               HelpTip(
                 title: 'Formats',
                 message:
-                    'Appui long sur un format (ou l’icône i) pour lire '
-                    'l’explication. Les noms anglais restent entre parenthèses.',
+                    'Maintenez un format, ou touchez le i, pour lire '
+                    'l’explication. Le nom anglais reste entre parenthèses.',
                 showIcon: true,
                 child: const Text(
                   'Format',
@@ -478,17 +460,19 @@ class _SetupScreenState extends State<SetupScreen> {
                 const _FormatNote(
                   title: 'Duel Commander · 2 joueurs',
                   body:
-                      'Face à face, 20 PV. La taxe de commandant est suivie, '
-                      'pas le seuil de 21 dégâts. Les deux sièges sont juste '
-                      'en dessous.',
+                      'Face à face, avec les règles du Duel Commander. '
+                      'Chacun commence à 20 points de vie. On compte la taxe '
+                      'de commandant, pas les 21 points de dégâts.',
                 )
               else if (_format == MatchFormat.commander && _count == 2)
                 const _FormatNote(
-                  title: 'Commander à 2',
+                  title: 'Commander à deux',
                   body:
-                      'Mêmes règles que l’EDH classique : 40 PV, et 21 dégâts '
-                      'de combat du même commandant éliminent. Pour le format '
-                      'officiel à 20 PV, choisissez Duel Commander.',
+                      'Vous n’êtes que deux, mais les règles restent celles '
+                      'du Commander. Chacun commence à 40 points de vie. '
+                      'Un joueur perd aussi s’il a reçu 21 points de dégâts '
+                      'de combat du même commandant. Pour la partie à deux '
+                      'à 20 points de vie, choisissez Duel Commander.',
                 ),
               const SizedBox(height: 8),
               Text(
@@ -791,7 +775,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         ? 'Indisponible en Géant à deux têtes'
                         : _handicaps
                         ? 'Handicaps actifs · PV −30…+30'
-                        : 'Précon vs cEDH, bonus / malus de PV',
+                        : 'Préconstruit ou deck compétitif, points de vie en plus ou en moins',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 12,
@@ -802,7 +786,8 @@ class _SetupScreenState extends State<SetupScreen> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Handicaps de deck'),
                       subtitle: const Text(
-                        'Un préconstruit peut partir à 50 PV, un cEDH à 30.',
+                        'Un préconstruit peut commencer à 50 points de vie, '
+                        'un deck compétitif à 30.',
                       ),
                       value: _handicaps && !_shared,
                       onChanged: _shared
@@ -860,7 +845,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Course planaire (Planechase)'),
                   subtitle: const Text(
-                    'Dé planaire et cartes de plans (chaos, planeswalk…).',
+                    'Cartes de plan, et un dé : quatre faces blanches, une planeswalk, une chaos.',
                   ),
                   value: _planechase,
                   onChanged: (value) => setState(() => _planechase = value),
@@ -869,7 +854,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Archennemi (Archenemy)'),
                   subtitle: const Text(
-                    'Un joueur face au reste de la table, avec des schémas.',
+                    'Un joueur contre le reste de la table, avec des stratagèmes.',
                   ),
                   value: _archenemy,
                   onChanged: (value) => setState(() => _archenemy = value),
@@ -878,7 +863,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Primes (Bounty · OTJ)'),
                   subtitle: const Text(
-                    'Cartes de prime Outlaws of Thunder Junction, niveaux 1–12.',
+                    'Cartes Prime de Hors-la-loi de Croisetonnerre, du niveau 1 au 12.',
                   ),
                   value: _bounty,
                   onChanged: (value) => setState(() => _bounty = value),
@@ -920,7 +905,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Astuce : transférez une partie en cours via Menu → Transférer (QR).',
+                'Pendant la partie, Transférer (QR) envoie la table sur un autre téléphone.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,

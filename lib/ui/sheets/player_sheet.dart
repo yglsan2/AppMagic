@@ -173,7 +173,7 @@ class PlayerSheet extends StatelessWidget {
                               final name = await askName(
                                 context,
                                 title: 'Nouveau commandant',
-                                hint: 'Partenaire, background…',
+                                hint: 'Partenaire, compagnon…',
                               );
                               if (name == null) return;
                               controller.addCommander(playerId, name);

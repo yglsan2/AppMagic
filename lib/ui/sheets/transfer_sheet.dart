@@ -35,8 +35,8 @@ Future<void> showExportTransferSheet(
               const SizedBox(height: 6),
               Text(
                 fits
-                    ? 'Scannez ce QR sur l’autre téléphone (salon → Importer), '
-                          'ou copiez le code.'
+                    ? 'Scannez ce QR sur l’autre téléphone : Outils, puis Importer. '
+                          'Ou copiez le code.'
                     : 'Partie trop riche pour un QR fiable : copiez le code '
                           'et collez-le sur l’autre appareil.',
                 textAlign: TextAlign.center,
