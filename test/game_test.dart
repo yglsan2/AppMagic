@@ -406,4 +406,24 @@ void main() {
     expect(facingSeatIndex(duel, 0), 1);
     expect(facingSeatIndex(duel, 1), 0);
   });
+
+  test('le chronomètre reste éteint tant qu’on ne l’active pas', () {
+    final game = Game.start();
+    expect(game.timersEnabled, isFalse);
+    final legacy = Map<String, dynamic>.from(game.toJson())
+      ..remove('timersEnabled');
+    expect(Game.fromJson(legacy).timersEnabled, isFalse);
+    final settings = Map<String, dynamic>.from(AppSettings.defaults.toJson())
+      ..remove('timersEnabled');
+    expect(AppSettings.fromJson(settings).timersEnabled, isFalse);
+
+    final controller = GameController(game: game);
+    expect(controller.turnOverAlert, isFalse);
+    controller.applyRules(
+      AppSettings.defaults.copyWith(timersEnabled: true),
+    );
+    expect(controller.game.timersEnabled, isTrue);
+    controller.applyRules(AppSettings.defaults);
+    expect(controller.game.timersEnabled, isFalse);
+  });
 }

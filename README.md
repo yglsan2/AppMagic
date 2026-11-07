@@ -1,106 +1,88 @@
 # Table MTG
 
-Compteur de vie pour Magic: The Gathering, pensé d’abord pour Android (Flutter).  
-L’idée : poser le téléphone au milieu de la table et jouer sans se battre avec l’interface.
+Compteur de partie pour Magic. On pose le téléphone au milieu de la table, chacun lit son côté, et on joue.
 
-Créateur : **YGLSAN**  
+Créateur : YGLSAN  
 Licence : [GNU GPL v3](LICENSE)
 
----
+L’application est prévue pour Android. Le web sert surtout à jeter un œil pendant le développement.
 
-## Ce que l’app fait
+## Autour de la table
 
-### À la table
+Deux joueurs se font face. À quatre ou plus, chacun a son quart de l’écran, tourné vers lui. Les textes d’aide suivent le même sens : le joueur d’en face ne lit pas à l’envers.
 
-- Compteurs de vie lisibles, avec boutons ±1 et ±5, appui long pour répéter.
-- Indication claire des PV bas (alerte visuelle).
-- Petit ± qui reste un instant à côté du total après un changement (les taps rapides se fusionnent).
-- Historique des PV et des dégâts de commandant, consultable à tout moment.
-- Annulation des dernières actions.
-- Sélection du premier joueur, dés, passage de tour avec numéro de tour visible.
-- Modes d’affichage adaptés : table partagée, liste, focus sur un siège.
+Le gros chiffre sur ton siège, c’est la vie de l’adversaire en face. Le petit total à côté de ton nom, c’est la tienne.
 
-### Formats
+− enlève un point. + le rend. Ça vaut pour une erreur de comptage comme pour un vrai dégât. −5 et +5 sont là quand le siège a la place. Un appui long enchaîne.
 
-Presets prêts à l’emploi, avec vie de départ et options cohérentes :
+Le commandant marche pareil. Le chiffre, c’est ce qu’il reste avant 21. − enlève 1 à ce compteur et 1 point de vie en même temps. + rend les deux. À 0, le commandant sort le joueur.
 
-- Commander (EDH)
-- Traîtrise (Treachery)
-- Duel Commander
-- Bagarre (Brawl)
-- Construit (60 cartes)
-- Limité (draft / scellé)
-- Géant à deux têtes (2HG, vie partagée)
-- Briseur de serment (Oathbreaker)
-- Personnalisé (seuils et options au choix)
+Les derniers changements restent écrits sur le siège : `Vie −1 · 40 → 39`, ou l’équivalent pour le commandant. L’historique complet est dans le menu.
 
-Options maison : Planechase, Archennemi, primes, etc. selon le réglage de partie.
+Quand tu as fini, tu touches **Fin de tour** sur ton siège. Le bouton passe chez le joueur suivant, dans son sens. Plus rien à aller chercher en bas de l’écran.
 
-### Commandant & compteurs
+Au début de la partie, on peut tirer au sort qui commence, ou passer.
 
-- Suivi des dégâts de commandant (seuil 21 par défaut), avec restants affichés.
-- Taxe de commandant, partners / plusieurs commandants.
-- Poison, énergie, expérience, rad, vitesse, trésors, storm, sort signature…
-- Mana flottant (WUBRG + incolore).
-- Handicaps de départ (brackets / ajustements de vie) si tu veux équilibrer une table mixte.
+## Formats
 
-### Soirée & stats
+Les préréglages mettent la vie de départ et les options au bon endroit. On peut ensuite les retoucher.
 
-- Mode soirée multi-tables : enchaîner les parties, classement, partage entre téléphones (code MTGN1).
-- Stats et récap en fin de partie.
-- Profils joueurs pour ne pas tout retaper à chaque fois.
+| Format | Joueurs | Vie |
+| --- | --- | --- |
+| Commander (EDH) | 2 à 8 | 40, 21 dégâts de commandant, taxe |
+| Duel Commander | 2 | 20, taxe, sans les 21 dégâts |
+| Traîtrise | 3 à 8 | règles Commander, rôles secrets |
+| Bagarre | 2 à 4 | 25 |
+| Construit, Limité | 2 | 20, sans commandant |
+| Géant à deux têtes | 4 | 30 partagés par équipe |
+| Briseur de serment | 2 à 4 | 20 |
+| Personnalisé | au choix | seuils réglables |
 
-### Transfert & outils
+Commander à deux, c’est l’EDH avec deux joueurs (40 et 21). Le Duel Commander est l’autre format, à part.
 
-- Transfert de partie en cours (QR / code MTGS1) d’un téléphone à un autre.
-- Recherche de cartes et journal optionnel via Scryfall (cache local).
-- Chrono de tour ou chess clock (banque de temps par joueur).
-- Astuces pour débutants (désactivables).
-- Vie privée : données locales, effacement cache / tout effacer (RGPD).
+Planechase, Archennemi et les primes se cochent dans les options. Le chronomètre (alerte de tour ou pendule) est éteint tant qu’on ne l’active pas.
 
----
+Poison, énergie, expérience, mana flottant, taxe, partenaires : tout ça reste accessible, sans prendre la place des points de vie. Les handicaps de départ servent si les decks ne sont pas du même niveau.
 
-## Lancer le projet
+## Soirée, transfert, cartes
 
-Prérequis : [Flutter](https://docs.flutter.dev/get-started/install) + SDK Android.
+Une soirée enchaîne plusieurs tables sur le même téléphone, avec un code pour s’y retrouver. Les profils évitent de retaper les noms.
+
+Une partie en cours peut passer d’un appareil à l’autre par QR. La recherche de cartes et le journal passent par Scryfall, avec un cache sur l’appareil. Rien de tout ça n’est obligatoire.
+
+Les données restent sur le téléphone. On peut vider le cache ou tout effacer depuis les réglages.
+
+## Lancer
+
+Il faut Flutter et le SDK Android.
 
 ```bash
 flutter pub get
-flutter devices
 flutter run -d android
 ```
 
-### Build
+APK :
 
 ```bash
-# APK installable
 flutter build apk --release
-
-# Bundle Play Store
-flutter build appbundle --release
 ```
 
-APK : `build/app/outputs/flutter-apk/app-release.apk`
+Le fichier se trouve dans `build/app/outputs/flutter-apk/app-release.apk`.
 
-La cible web existe surtout pour un aperçu rapide pendant le développement ; Android reste la plateforme principale.
+Pour le Play Store : `flutter build appbundle --release`.
 
-Scripts utilitaires (machine Windows avec SDK sur D:) : dossier `scripts/`.
+Sur cette machine, des scripts dans `scripts/` aident au build Android.
 
----
+## Magic
 
-## Contenu fan
+Magic: The Gathering est une marque de Wizards of the Coast. Table MTG est un projet fan, sans lien avec Wizards of the Coast.
 
-Magic: The Gathering est une marque de Wizards of the Coast.  
-Cette app est un projet fan, non officiel, et n’est pas affiliée à Wizards of the Coast.
-
-Les images de cartes éventuelles passent par Scryfall ; respecte leurs conditions d’usage.
-
----
+Les images de cartes viennent de Scryfall. Leurs conditions d’usage s’appliquent.
 
 ## Licence
 
-Copyright (C) YGLSAN  
+Copyright (C) YGLSAN
 
-Ce programme est un logiciel libre : vous pouvez le redistribuer et/ou le modifier selon les termes de la [GNU General Public License version 3](LICENSE) telle que publiée par la Free Software Foundation.
+Logiciel libre : redistribution et modification selon la [GNU General Public License version 3](LICENSE).
 
-Ce programme est distribué dans l’espoir qu’il sera utile, mais SANS AUCUNE GARANTIE.
+Le programme est fourni sans garantie.

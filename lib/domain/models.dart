@@ -58,6 +58,8 @@ class FormatInfo {
     required this.commanderTax,
     required this.sharedLife,
     required this.defaultPlayers,
+    this.minPlayers = 1,
+    this.maxPlayers = 8,
   });
 
   final MatchFormat format;
@@ -71,22 +73,32 @@ class FormatInfo {
   final bool commanderTax;
   final bool sharedLife;
   final int defaultPlayers;
+  /// Borne basse du sélecteur de sièges (incluse).
+  final int minPlayers;
+  /// Borne haute du sélecteur de sièges (incluse).
+  final int maxPlayers;
+
+  bool get fixedPlayerCount => minPlayers == maxPlayers;
 }
 
 const formatCatalog = <FormatInfo>[
   FormatInfo(
     format: MatchFormat.commander,
     label: 'Commander (EDH)',
-    detail: '40 PV · 3 à 8 joueurs · 21 dégâts par commandant',
+    detail: '40 PV · 2 à 8 joueurs · 21 dégâts par commandant',
     help:
-        'Format multi-joueurs le plus répandu : un commandant légendaire, '
-        'deck de 100 cartes, 40 points de vie. 21 dégâts de combat du même '
-        'commandant éliminent. Aussi appelé EDH (Elder Dragon Highlander).',
+        'Format le plus répandu : un commandant légendaire, deck de 100 cartes, '
+        '40 points de vie. 21 dégâts de combat du même commandant éliminent. '
+        'Aussi appelé EDH. La table classique est à 4, mais on peut jouer à 2 '
+        'avec exactement ces règles. Le Duel Commander (20 PV, sans les 21 '
+        'dégâts) est un autre format.',
     startingLife: 40,
     commanderDamage: true,
     commanderTax: true,
     sharedLife: false,
     defaultPlayers: 4,
+    minPlayers: 2,
+    maxPlayers: 8,
   ),
   FormatInfo(
     format: MatchFormat.treachery,
@@ -102,20 +114,25 @@ const formatCatalog = <FormatInfo>[
     commanderTax: true,
     sharedLife: false,
     defaultPlayers: 5,
+    minPlayers: 3,
+    maxPlayers: 8,
   ),
   FormatInfo(
     format: MatchFormat.duel,
     label: 'Duel Commander',
-    detail: '20 PV · taxe oui · pas de dégâts de commandant',
+    detail: '2 joueurs · 20 PV · taxe · sans les 21 dégâts',
     help:
-        'Commander en duel (1 contre 1) : 20 PV, taxe de commandant, '
-        'généralement sans suivi des 21 dégâts de commandant. Plus rapide '
-        'et plus agressif qu’une table à quatre.',
+        'Duel Commander, le format 1 contre 1 : toujours 2 joueurs, 20 PV, '
+        'taxe de commandant, sans le seuil de 21 dégâts. Plus rapide que '
+        'l’EDH. Pour une partie à deux avec les règles EDH (40 PV et 21 '
+        'dégâts), restez sur Commander et choisissez 2 joueurs.',
     startingLife: 20,
     commanderDamage: false,
     commanderTax: true,
     sharedLife: false,
     defaultPlayers: 2,
+    minPlayers: 2,
+    maxPlayers: 2,
   ),
   FormatInfo(
     format: MatchFormat.brawl,
@@ -531,6 +548,7 @@ class Game {
     this.seatShift = 0,
     this.handicapsEnabled = false,
     this.timerMode = TimerMode.alert,
+    this.timersEnabled = false,
     this.chessBankSeconds = 1200,
   }) : schemes = schemes ?? [];
 
@@ -568,6 +586,8 @@ class Game {
   /// Handicaps de niveau de deck (PV de départ ajustés).
   bool handicapsEnabled;
   TimerMode timerMode;
+  /// Faux : aucun chrono n’est affiché ni imposé.
+  bool timersEnabled;
   int chessBankSeconds;
 
   factory Game.start({
@@ -583,6 +603,7 @@ class Game {
     int poisonThreshold = 10,
     int turnAlertSeconds = 90,
     TimerMode timerMode = TimerMode.alert,
+    bool timersEnabled = false,
     int chessBankSeconds = 1200,
     bool planechase = false,
     bool archenemy = false,
@@ -672,6 +693,7 @@ class Game {
       resetStormOnTurn: resetStormOnTurn,
       turnAlertSeconds: turnAlertSeconds,
       timerMode: timerMode,
+      timersEnabled: timersEnabled,
       chessBankSeconds: chessBankSeconds,
       planechase: planechase,
       archenemy: archenemy,
@@ -824,6 +846,7 @@ class Game {
     'resetStormOnTurn': resetStormOnTurn,
     'turnAlertSeconds': turnAlertSeconds,
     'timerMode': timerMode.name,
+    'timersEnabled': timersEnabled,
     'chessBankSeconds': chessBankSeconds,
     'players': players.map((player) => player.toJson()).toList(),
     'activeIndex': activeIndex,
@@ -866,6 +889,7 @@ class Game {
         (mode) => mode.name == json['timerMode'],
         orElse: () => TimerMode.alert,
       ),
+      timersEnabled: json['timersEnabled'] as bool? ?? false,
       chessBankSeconds: asInt(json['chessBankSeconds'], 1200),
       players: [
         for (final raw in (json['players'] as List? ?? []))
@@ -1103,6 +1127,7 @@ class AppSettings {
     required this.poisonThreshold,
     required this.turnAlertSeconds,
     required this.timerMode,
+    required this.timersEnabled,
     required this.chessBankSeconds,
     required this.coachSeen,
     required this.showLifeFeed,
@@ -1120,6 +1145,7 @@ class AppSettings {
     poisonThreshold: 10,
     turnAlertSeconds: 90,
     timerMode: TimerMode.alert,
+    timersEnabled: false,
     chessBankSeconds: 1200,
     coachSeen: false,
     showLifeFeed: true,
@@ -1136,6 +1162,8 @@ class AppSettings {
   final int poisonThreshold;
   final int turnAlertSeconds;
   final TimerMode timerMode;
+  /// Chronomètre affiché et alertes. Désactivé par défaut.
+  final bool timersEnabled;
   /// Banque initiale chess clock (secondes par joueur).
   final int chessBankSeconds;
   final bool coachSeen;
@@ -1156,6 +1184,7 @@ class AppSettings {
     int? poisonThreshold,
     int? turnAlertSeconds,
     TimerMode? timerMode,
+    bool? timersEnabled,
     int? chessBankSeconds,
     bool? coachSeen,
     bool? showLifeFeed,
@@ -1172,6 +1201,7 @@ class AppSettings {
       poisonThreshold: poisonThreshold ?? this.poisonThreshold,
       turnAlertSeconds: turnAlertSeconds ?? this.turnAlertSeconds,
       timerMode: timerMode ?? this.timerMode,
+      timersEnabled: timersEnabled ?? this.timersEnabled,
       chessBankSeconds: chessBankSeconds ?? this.chessBankSeconds,
       coachSeen: coachSeen ?? this.coachSeen,
       showLifeFeed: showLifeFeed ?? this.showLifeFeed,
@@ -1190,6 +1220,7 @@ class AppSettings {
     'poisonThreshold': poisonThreshold,
     'turnAlertSeconds': turnAlertSeconds,
     'timerMode': timerMode.name,
+    'timersEnabled': timersEnabled,
     'chessBankSeconds': chessBankSeconds,
     'coachSeen': coachSeen,
     'showLifeFeed': showLifeFeed,
@@ -1214,6 +1245,7 @@ class AppSettings {
         (mode) => mode.name == json['timerMode'],
         orElse: () => TimerMode.alert,
       ),
+      timersEnabled: json['timersEnabled'] as bool? ?? false,
       chessBankSeconds: asInt(json['chessBankSeconds'], 1200),
       coachSeen: json['coachSeen'] as bool? ?? false,
       showLifeFeed: json['showLifeFeed'] as bool? ?? true,

@@ -161,11 +161,20 @@ class _SettingsSheetState extends State<SettingsSheet> {
               _update(_settings.copyWith(poisonThreshold: value)),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Chronométrage',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Chronomètre'),
+          subtitle: Text(
+            _settings.timersEnabled
+                ? 'Activé. Le temps du tour et de la partie s’affiche.'
+                : 'Désactivé. Aucun temps n’est affiché ni imposé.',
+          ),
+          value: _settings.timersEnabled,
+          onChanged: (value) =>
+              _update(_settings.copyWith(timersEnabled: value)),
         ),
-        const SizedBox(height: 8),
+        if (_settings.timersEnabled) ...[
+        const SizedBox(height: 4),
         SegmentedButton<TimerMode>(
           segments: const [
             ButtonSegment(
@@ -197,7 +206,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             children: [
               for (final seconds in const [0, 60, 90, 120, 180, 300])
                 ChoiceChip(
-                  label: Text(seconds == 0 ? 'Off' : '${seconds}s'),
+                  label: Text(seconds == 0 ? 'Sans alerte' : '${seconds}s'),
                   selected: _settings.turnAlertSeconds == seconds,
                   onSelected: (_) =>
                       _update(_settings.copyWith(turnAlertSeconds: seconds)),
@@ -205,7 +214,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
             ],
           ),
           _StepperTile(
-            label: 'Personnaliser (0 = off)',
+            label: 'Limite en secondes (0 = sans alerte)',
             value: _settings.turnAlertSeconds,
             min: 0,
             max: 600,
@@ -235,6 +244,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 ),
             ],
           ),
+        ],
         ],
       ],
     );

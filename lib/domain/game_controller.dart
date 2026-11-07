@@ -235,7 +235,9 @@ class GameController extends ChangeNotifier {
 
   /// Banque restante du joueur actif (chess), en tenant compte du tour en cours.
   Duration get activeBankRemaining {
-    if (game.timerMode != TimerMode.chess || game.players.isEmpty) {
+    if (!game.timersEnabled ||
+        game.timerMode != TimerMode.chess ||
+        game.players.isEmpty) {
       return Duration.zero;
     }
     final active = game.players[game.activeIndex];
@@ -244,6 +246,7 @@ class GameController extends ChangeNotifier {
   }
 
   bool get turnOverAlert {
+    if (!game.timersEnabled) return false;
     if (game.timerMode == TimerMode.chess) {
       return game.players.isNotEmpty &&
           activeBankRemaining <= Duration.zero &&
@@ -993,7 +996,7 @@ class GameController extends ChangeNotifier {
           ? 'Manche ${game.roundNumber + 1} · ${incoming.name}'
           : 'Tour de ${incoming.name}',
       () {
-        if (game.timerMode == TimerMode.chess) {
+        if (game.timersEnabled && game.timerMode == TimerMode.chess) {
           leaving.clockBankMs = (leaving.clockBankMs - spentMs).clamp(
             0,
             game.chessBankSeconds * 1000,
@@ -1011,7 +1014,9 @@ class GameController extends ChangeNotifier {
       },
     );
     turnStarted = DateTime.now();
-    if (game.timerMode == TimerMode.chess && leaving.clockBankMs <= 0) {
+    if (game.timersEnabled &&
+        game.timerMode == TimerMode.chess &&
+        leaving.clockBankMs <= 0) {
       flash('${leaving.name} · banque de temps épuisée');
     }
   }
@@ -1224,6 +1229,7 @@ class GameController extends ChangeNotifier {
         game.poisonThreshold == settings.poisonThreshold &&
         game.turnAlertSeconds == settings.turnAlertSeconds &&
         game.timerMode == settings.timerMode &&
+        game.timersEnabled == settings.timersEnabled &&
         game.chessBankSeconds == settings.chessBankSeconds;
     if (same) return;
     final bankChanged = game.chessBankSeconds != settings.chessBankSeconds;
@@ -1235,8 +1241,10 @@ class GameController extends ChangeNotifier {
       game.poisonThreshold = settings.poisonThreshold.clamp(1, 30);
       game.turnAlertSeconds = settings.turnAlertSeconds.clamp(0, 3600);
       game.timerMode = settings.timerMode;
+      game.timersEnabled = settings.timersEnabled;
       game.chessBankSeconds = settings.chessBankSeconds.clamp(60, 6 * 3600);
-      if (bankChanged || settings.timerMode == TimerMode.chess) {
+      if (settings.timersEnabled &&
+          (bankChanged || settings.timerMode == TimerMode.chess)) {
         for (final player in game.players) {
           if (player.clockBankMs <= 0 || bankChanged) {
             player.clockBankMs = game.chessBankSeconds * 1000;

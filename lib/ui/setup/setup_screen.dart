@@ -74,6 +74,7 @@ class _DraftPlayer {
 
 class _SetupScreenState extends State<SetupScreen> {
   final Map<String, TextEditingController> _fields = {};
+  final GlobalKey _playerSetupKey = GlobalKey();
   late MatchFormat _format;
   late int _life;
   late bool _damage;
@@ -103,7 +104,10 @@ class _SetupScreenState extends State<SetupScreen> {
     // Préférence réglages, sauf vie partagée (2HG) où les handicaps n’ont pas de sens.
     _handicaps = widget.settings.handicapsEnabled && !_shared;
     final source = group?.players ?? const <PlaygroupPlayer>[];
-    _count = source.isEmpty ? info.defaultPlayers : source.length.clamp(1, 8);
+    _count = _normalizedCount(
+      source.isEmpty ? info.defaultPlayers : source.length,
+      info,
+    );
     for (final player in source) {
       _drafts.add(
         _DraftPlayer(
@@ -162,6 +166,33 @@ class _SetupScreenState extends State<SetupScreen> {
     }
   }
 
+  int _normalizedCount(int value, FormatInfo info) {
+    var next = value;
+    if (info.sharedLife) {
+      if (next.isOdd) next += 1;
+      if (next < 2) next = 2;
+    }
+    next = next.clamp(info.minPlayers, info.maxPlayers);
+    if (info.sharedLife && next.isOdd) {
+      final lower = next - 1;
+      next = lower >= info.minPlayers ? lower : next + 1;
+      next = next.clamp(info.minPlayers, info.maxPlayers);
+    }
+    return next;
+  }
+
+  void _revealPlayerSetup() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _playerSetupKey.currentContext;
+      if (target == null || !target.mounted) return;
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 280),
+        alignment: 0.05,
+      );
+    });
+  }
+
   void _applyFormat(FormatInfo info) {
     setState(() {
       _format = info.format;
@@ -172,30 +203,18 @@ class _SetupScreenState extends State<SetupScreen> {
         _shared = info.sharedLife;
         _count = info.defaultPlayers;
       }
-      if (_shared && _count.isOdd) _count += 1;
-      if (_shared && _count < 2) _count = 2;
-      if (_format == MatchFormat.commander || _format == MatchFormat.treachery) {
-        _count = _count.clamp(3, 8);
-      } else {
-        _count = _count.clamp(1, 8);
-      }
+      _count = _normalizedCount(_count, info);
       _ensureCommanders();
     });
+    _revealPlayerSetup();
   }
 
   void _setCount(int value) {
     setState(() {
-      var next = value;
-      if (_shared && next.isOdd) next += 1;
-      if (_shared && next < 2) next = 2;
-      if (_format == MatchFormat.commander || _format == MatchFormat.treachery) {
-        next = next.clamp(3, 8);
-      } else {
-        next = next.clamp(1, 8);
-      }
-      _count = next;
+      _count = _normalizedCount(value, formatInfo(_format));
       _ensureCommanders();
     });
+    _revealPlayerSetup();
   }
 
   Future<void> _lookupArt(_DraftCmd commander) async {
@@ -243,6 +262,7 @@ class _SetupScreenState extends State<SetupScreen> {
       poisonThreshold: widget.settings.poisonThreshold,
       turnAlertSeconds: widget.settings.turnAlertSeconds,
       timerMode: widget.settings.timerMode,
+      timersEnabled: widget.settings.timersEnabled,
       chessBankSeconds: widget.settings.chessBankSeconds,
       planechase: _planechase,
       archenemy: _archenemy,
@@ -281,24 +301,19 @@ class _SetupScreenState extends State<SetupScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0C1420),
-              Color(0xFF07090E),
-              Color(0xFF0A1612),
-            ],
-          ),
-        ),
+        decoration: const BoxDecoration(gradient: pageGradient),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, viewport) {
-              final contentWidth = (viewport.maxWidth - 40).clamp(280.0, 720.0);
+              final pad = viewport.maxWidth < 400 ? 16.0 : 20.0;
+              final contentWidth = (viewport.maxWidth - pad * 2).clamp(
+                260.0,
+                720.0,
+              );
+              final titleSize = viewport.maxWidth < 400 ? 30.0 : 36.0;
               return SingleChildScrollView(
                 key: const Key('setup-form'),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+                padding: EdgeInsets.fromLTRB(pad, 12, pad, 24),
                 child: Align(
                   alignment: Alignment.topCenter,
                   child: SizedBox(
@@ -306,14 +321,14 @@ class _SetupScreenState extends State<SetupScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-              ShaderMask(
-                blendMode: BlendMode.srcIn,
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [Color(0xFFF2F5FA), Color(0xFFC9E8D4)],
-                ).createShader(bounds),
-                child: const Text(
-                  'Table MTG',
-                  style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900),
+              Text(
+                'Table MTG',
+                style: TextStyle(
+                  fontSize: titleSize,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.8,
+                  height: 1.05,
+                  color: const Color(0xFFF4F7FB),
                 ),
               ),
               const SizedBox(height: 6),
@@ -459,33 +474,65 @@ class _SetupScreenState extends State<SetupScreen> {
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
                 ),
               ),
+              if (_format == MatchFormat.duel)
+                const _FormatNote(
+                  title: 'Duel Commander · 2 joueurs',
+                  body:
+                      'Face à face, 20 PV. La taxe de commandant est suivie, '
+                      'pas le seuil de 21 dégâts. Les deux sièges sont juste '
+                      'en dessous.',
+                )
+              else if (_format == MatchFormat.commander && _count == 2)
+                const _FormatNote(
+                  title: 'Commander à 2',
+                  body:
+                      'Mêmes règles que l’EDH classique : 40 PV, et 21 dégâts '
+                      'de combat du même commandant éliminent. Pour le format '
+                      'officiel à 20 PV, choisissez Duel Commander.',
+                ),
               const SizedBox(height: 8),
               Text(
-                _format == MatchFormat.commander ||
-                        _format == MatchFormat.treachery
-                    ? 'Joueurs (3–8)'
-                    : 'Joueurs',
+                key: _playerSetupKey,
+                formatInfo(_format).fixedPlayerCount
+                    ? 'Joueurs (${formatInfo(_format).minPlayers})'
+                    : 'Joueurs (${formatInfo(_format).minPlayers}–${formatInfo(_format).maxPlayers})',
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 18,
                 ),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (var n = 1; n <= 8; n++)
-                    if ((!_shared || n.isEven) &&
-                        ((_format != MatchFormat.commander &&
-                                _format != MatchFormat.treachery) ||
-                            n >= 3))
-                      _CountPick(
-                        value: n,
-                        selected: _count == n,
-                        onTap: () => _setCount(n),
-                      ),
-                ],
+              Builder(
+                builder: (context) {
+                  final values = [
+                    for (
+                      var n = formatInfo(_format).minPlayers;
+                      n <= formatInfo(_format).maxPlayers;
+                      n++
+                    )
+                      if (!_shared || n.isEven) n,
+                  ];
+                  const gap = 8.0;
+                  final size = values.isEmpty
+                      ? 48.0
+                      : ((contentWidth - gap * (values.length - 1)) /
+                              values.length)
+                          .clamp(40.0, 52.0);
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      for (final n in values)
+                        _CountPick(
+                          key: ValueKey('player-count-$n'),
+                          value: n,
+                          selected: _count == n,
+                          size: size,
+                          onTap: () => _setCount(n),
+                        ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 18),
               for (final player in used) ...[
@@ -524,17 +571,27 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     if (_handicaps && !_shared)
                       Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: Text(
-                          '${effectiveStartingLife(baseLife: _life, handicapsEnabled: true, lifeDelta: player.handicapLifeDelta)} PV',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFFC4A46A),
+                        padding: const EdgeInsets.only(left: 6),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 64),
+                          child: Text(
+                            '${effectiveStartingLife(baseLife: _life, handicapsEnabled: true, lifeDelta: player.handicapLifeDelta)} PV',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: accentGold,
+                            ),
                           ),
                         ),
                       ),
                     IconButton(
                       tooltip: 'Charger un profil',
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                       onPressed: () async {
                         final picked = await showPickProfileSheet(
                           context,
@@ -566,6 +623,11 @@ class _SetupScreenState extends State<SetupScreen> {
                     ),
                     IconButton(
                       tooltip: 'Sauver le profil',
+                      visualDensity: VisualDensity.compact,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                       onPressed: widget.onSaveProfile == null
                           ? null
                           : () async {
@@ -667,12 +729,22 @@ class _SetupScreenState extends State<SetupScreen> {
                               ),
                               IconButton(
                                 tooltip: 'Illustration Scryfall',
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints(
+                                  minWidth: 36,
+                                  minHeight: 36,
+                                ),
                                 onPressed: () =>
                                     _lookupArt(player.commanders[i]),
                                 icon: const Icon(Icons.image_search, size: 20),
                               ),
                               if (player.commanders.length > 1)
                                 IconButton(
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
                                   onPressed: () => setState(() {
                                     final removed = player.commanders.removeAt(
                                       i,
@@ -868,35 +940,85 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 }
 
+class _FormatNote extends StatelessWidget {
+  const _FormatNote({required this.title, required this.body});
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: accent.withValues(alpha: 0.45)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                body,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CountPick extends StatelessWidget {
   const _CountPick({
+    super.key,
     required this.value,
     required this.selected,
     required this.onTap,
+    this.size = 48,
   });
 
   final int value;
   final bool selected;
   final VoidCallback onTap;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? const Color(0xFFC4A46A) : const Color(0xFF1C212B),
-      borderRadius: BorderRadius.circular(16),
+      color: selected ? accent : surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: selected ? accent : line),
+      ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: SizedBox(
-          width: 56,
-          height: 56,
+          width: size,
+          height: size,
           child: Center(
             child: Text(
               '$value',
               style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                color: selected ? Colors.black : Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: selected ? onAccent : const Color(0xFFF4F7FB),
               ),
             ),
           ),

@@ -31,8 +31,35 @@
 
   <title>mtg_table</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #090b10;
+      color: #f2f5fa;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: sans-serif;
+    }
+    flutter-view {
+      position: fixed;
+      inset: 0;
+    }
+    /* Firefox ne peint pas le canvas Flutter si ce cadre reste à 0×0. */
+    flt-glass-pane {
+      position: absolute !important;
+      inset: 0;
+      display: block !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+  </style>
 </head>
 <body>
+  <p id="mtg-loading">Chargement de Table MTG…</p>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

@@ -353,7 +353,8 @@ class PlayerSheet extends StatelessWidget {
                       },
                     ),
                   ],
-                  if (game.timerMode == TimerMode.chess) ...[
+                  if (game.timersEnabled &&
+                      game.timerMode == TimerMode.chess) ...[
                     const SizedBox(height: 8),
                     Text(
                       'Banque · ${_clockLabel(player.clockBankMs)}',

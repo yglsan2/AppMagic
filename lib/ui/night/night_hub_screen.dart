@@ -259,6 +259,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
       startingLife: info.startingLife,
       turnAlertSeconds: widget.settings.turnAlertSeconds,
       timerMode: widget.settings.timerMode,
+      timersEnabled: widget.settings.timersEnabled,
       chessBankSeconds: widget.settings.chessBankSeconds,
       handicapsEnabled: widget.settings.handicapsEnabled,
       resetManaOnTurn: widget.settings.resetManaOnTurn,
@@ -274,15 +275,21 @@ class _NightHubScreenState extends State<NightHubScreen> {
     final board = night.standings();
     return Scaffold(
       appBar: AppBar(
-        title: Text(night.title),
+        title: Text(
+          night.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             tooltip: 'Stats & export',
+            visualDensity: VisualDensity.compact,
             onPressed: () => showNightStatsSheet(context, night),
             icon: const Icon(Icons.bar_chart),
           ),
           IconButton(
             tooltip: 'Partager',
+            visualDensity: VisualDensity.compact,
             onPressed: _share,
             icon: const Icon(Icons.ios_share),
           ),
@@ -337,22 +344,24 @@ class _NightHubScreenState extends State<NightHubScreen> {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  accent.withValues(alpha: 0.35),
-                  const Color(0xFF1A2230),
+                  accent.withValues(alpha: 0.22),
+                  surface,
                 ],
               ),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+              border: Border.all(color: accent.withValues(alpha: 0.28)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   night.code,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.2,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.1,
                   ),
                 ),
                 const SizedBox(height: 4),

@@ -20,6 +20,7 @@ class PlayerPanel extends StatelessWidget {
     required this.controller,
     required this.playerId,
     required this.haptic,
+
     /// Sur table partagée : le gros pad retire les PV de l’adversaire en face.
     /// Le badge à côté du pseudo reste TOUJOURS les PV de [playerId].
     this.lifeTargetId,
@@ -74,13 +75,10 @@ class PlayerPanel extends StatelessWidget {
               children: [
                 if (artUrl != null)
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(20),
                     child: Opacity(
                       opacity: 0.22,
-                      child: SafeNetworkImage(
-                        url: artUrl,
-                        fit: BoxFit.cover,
-                      ),
+                      child: SafeNetworkImage(url: artUrl, fit: BoxFit.cover),
                     ),
                   ),
                 Padding(
@@ -119,6 +117,7 @@ class PlayerPanel extends StatelessWidget {
                           compact: height < 260,
                           showFive: showFive,
                           startingLife: targetStart,
+                          seatActive: active,
                         ),
                       ),
                       if (showCmd)
@@ -128,7 +127,7 @@ class PlayerPanel extends StatelessWidget {
                           defender: target,
                           haptic: haptic,
                           panelWidth: width - 20,
-                          compact: height < 280,
+                          compact: height < 340,
                         ),
                     ],
                   ),
@@ -177,20 +176,18 @@ class _TopBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
-                radius: active ? 13 : 11,
-                backgroundColor: active
-                    ? color
-                    : color.withValues(alpha: 0.45),
+                radius: 12,
+                backgroundColor: active ? color : color.withValues(alpha: 0.45),
                 child: Text(
                   playerInitial(player.name),
                   style: TextStyle(
                     color: Colors.black.withValues(alpha: active ? 1 : 0.7),
-                    fontSize: active ? 11 : 10,
+                    fontSize: 11,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: InkWell(
                   onTap: () => showPlayerSheet(context, controller, player.id),
@@ -203,7 +200,7 @@ class _TopBar extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
-                            fontSize: active ? 17 : 13,
+                            fontSize: 13,
                             height: 1.1,
                             color: active
                                 ? Colors.white
@@ -246,7 +243,7 @@ class _TopBar extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 6),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
+                    horizontal: 6,
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
@@ -262,8 +259,10 @@ class _TopBar extends StatelessWidget {
                   ),
                   child: Text(
                     '${player.life} PV',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: active ? 14 : 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.w900,
                       height: 1,
                       color: active ? Colors.white : Colors.white70,
@@ -271,8 +270,7 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
               ),
-              if (game.handicapsEnabled &&
-                  player.handicapDelta(true) != 0)
+              if (game.handicapsEnabled && player.handicapDelta(true) != 0)
                 Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: Tooltip(
@@ -309,39 +307,6 @@ class _TopBar extends StatelessWidget {
             ],
           ),
         ),
-        if (active)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.55),
-                      blurRadius: 8,
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  'TON TOUR',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                    letterSpacing: 0.6,
-                    color: Colors.black,
-                    height: 1.1,
-                  ),
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -409,90 +374,105 @@ class _QuickStatus extends StatelessWidget {
     final poisonMax = game.poisonThreshold;
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 2),
-      child: SingleChildScrollView(
+      child: _ChipScroller(
+        children: [
+          HelpTip(
+            enabled: showTips,
+            title: 'Poison',
+            message:
+                'Marqueurs poison. À $poisonMax (réglable dans Réglages), '
+                'le joueur est éliminé. Touchez − / + pour ajuster.',
+            child: _StatusChip(
+              label: '☠ ${player.poison}',
+              active: player.poison > 0,
+              danger: player.poison >= poisonMax - 1,
+              onMinus: () {
+                controller.bumpStat(player.id, Stat.poison, -1);
+                buzz(haptic);
+              },
+              onPlus: () {
+                controller.bumpStat(player.id, Stat.poison, 1);
+                buzz(haptic);
+              },
+            ),
+          ),
+          HelpTip(
+            enabled: showTips,
+            title: 'Monarque',
+            message:
+                'Le monarque pioche une carte en plus à sa phase de pioche. '
+                'Si tu subis des dégâts de combat, l’attaquant devient '
+                'monarque. Un seul monarque à la table.',
+            child: _ToggleChip(
+              icon: Icons.workspace_premium,
+              label: 'Monarque',
+              active: isMonarch,
+              color: color,
+              onTap: () {
+                controller.toggleMonarch(player.id);
+                buzz(haptic);
+              },
+            ),
+          ),
+          HelpTip(
+            enabled: showTips,
+            title: 'Initiative',
+            message:
+                'Initiative (sous-terrains) : le joueur explore le donjon. '
+                'Si tu subis des dégâts de combat, l’attaquant prend '
+                'l’initiative. Une seule initiative à la table.',
+            child: _ToggleChip(
+              icon: Icons.flag_outlined,
+              label: 'Initiative',
+              active: hasInit,
+              color: color,
+              onTap: () {
+                controller.toggleInitiative(player.id);
+                buzz(haptic);
+              },
+            ),
+          ),
+          if (player.blessing)
+            HelpTip(
+              enabled: showTips,
+              title: 'Cité d’Or',
+              message:
+                  'Bénédiction de la Cité d’Or : avantage permanent une '
+                  'fois obtenue. Toucher pour retirer si besoin.',
+              child: _ToggleChip(
+                icon: Icons.apartment,
+                label: 'Cité',
+                active: true,
+                color: color,
+                onTap: () {
+                  controller.toggleBlessing(player.id);
+                  buzz(haptic);
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Une seule ligne : les pastilles défilent au lieu d’empiler
+/// et d’écraser les signes + / −.
+class _ChipScroller extends StatelessWidget {
+  const _ChipScroller({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            HelpTip(
-              enabled: showTips,
-              title: 'Poison',
-              message:
-                  'Marqueurs poison. À $poisonMax (réglable dans Réglages), '
-                  'le joueur est éliminé. Touchez − / + pour ajuster.',
-              child: _StatusChip(
-                label: '☠ ${player.poison}',
-                active: player.poison > 0,
-                danger: player.poison >= poisonMax - 1,
-                onMinus: () {
-                  controller.bumpStat(player.id, Stat.poison, -1);
-                  buzz(haptic);
-                },
-                onPlus: () {
-                  controller.bumpStat(player.id, Stat.poison, 1);
-                  buzz(haptic);
-                },
-              ),
-            ),
-            const SizedBox(width: 6),
-            HelpTip(
-              enabled: showTips,
-              title: 'Monarque',
-              message:
-                  'Le monarque pioche une carte en plus à sa phase de pioche. '
-                  'Si tu subis des dégâts de combat, l’attaquant devient '
-                  'monarque. Un seul monarque à la table.',
-              child: _ToggleChip(
-                icon: Icons.workspace_premium,
-                label: 'Monarque',
-                active: isMonarch,
-                color: color,
-                onTap: () {
-                  controller.toggleMonarch(player.id);
-                  buzz(haptic);
-                },
-              ),
-            ),
-            const SizedBox(width: 6),
-            HelpTip(
-              enabled: showTips,
-              title: 'Initiative',
-              message:
-                  'Initiative (sous-terrains) : le joueur explore le donjon. '
-                  'Si tu subis des dégâts de combat, l’attaquant prend '
-                  'l’initiative. Une seule initiative à la table.',
-              child: _ToggleChip(
-                icon: Icons.flag_outlined,
-                label: 'Initiative',
-                active: hasInit,
-                color: color,
-                onTap: () {
-                  controller.toggleInitiative(player.id);
-                  buzz(haptic);
-                },
-              ),
-            ),
-            if (player.blessing) ...[
-              const SizedBox(width: 6),
-              HelpTip(
-                enabled: showTips,
-                title: 'Cité d’Or',
-                message:
-                    'Bénédiction de la Cité d’Or : avantage permanent une '
-                    'fois obtenue. Toucher pour retirer si besoin.',
-                child: _ToggleChip(
-                  icon: Icons.apartment,
-                  label: 'Cité',
-                  active: true,
-                  color: color,
-                  onTap: () {
-                    controller.toggleBlessing(player.id);
-                    buzz(haptic);
-                  },
-                ),
-              ),
-            ],
-          ],
-        ),
+        padding: EdgeInsets.zero,
+        itemCount: children.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (_, index) => children[index],
       ),
     );
   }
@@ -526,101 +506,93 @@ class _ResourceStrip extends StatelessWidget {
     final showTax = controller.game.trackCommanderTax;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            HelpTip(
-              enabled: showTips,
-              title: 'Mana flottant',
-              message:
-                  'Mana non dépensé encore disponible. − retire 1, + ajoute '
-                  '1 mana incolore (détail des couleurs dans Suivis).',
-              child: _StatusChip(
-                label: '✦ $_manaTotal',
-                active: _manaTotal > 0,
-                danger: false,
-                onMinus: () {
-                  for (final key in manaKeys.reversed) {
-                    if ((player.mana[key] ?? 0) > 0) {
-                      controller.bumpMana(player.id, key, -1);
-                      break;
-                    }
+      child: _ChipScroller(
+        children: [
+          HelpTip(
+            enabled: showTips,
+            title: 'Mana flottant',
+            message:
+                'Mana non dépensé encore disponible. − retire 1, + ajoute '
+                '1 mana incolore (détail des couleurs dans Suivis).',
+            child: _StatusChip(
+              label: '✦ $_manaTotal',
+              active: _manaTotal > 0,
+              danger: false,
+              onMinus: () {
+                for (final key in manaKeys.reversed) {
+                  if ((player.mana[key] ?? 0) > 0) {
+                    controller.bumpMana(player.id, key, -1);
+                    break;
                   }
-                  buzz(haptic);
-                },
-                onPlus: () {
-                  controller.bumpMana(player.id, 'C', 1);
-                  buzz(haptic);
-                },
-              ),
+                }
+                buzz(haptic);
+              },
+              onPlus: () {
+                controller.bumpMana(player.id, 'C', 1);
+                buzz(haptic);
+              },
             ),
-            const SizedBox(width: 6),
-            HelpTip(
-              enabled: showTips,
-              title: 'Storm',
-              message:
-                  'Compteur d’enchaînement (storm) pour ce tour : nombre de '
-                  'sorts déjà lancés. Souvent remis à 0 en fin de tour.',
-              child: _StatusChip(
-                label: 'Storm ${player.storm}',
-                active: player.storm > 0,
-                danger: false,
-                onMinus: () {
-                  controller.bumpStat(player.id, Stat.storm, -1);
-                  buzz(haptic);
-                },
-                onPlus: () {
-                  controller.bumpStat(player.id, Stat.storm, 1);
-                  buzz(haptic);
-                },
-              ),
+          ),
+          HelpTip(
+            enabled: showTips,
+            title: 'Storm',
+            message:
+                'Compteur d’enchaînement (storm) pour ce tour : nombre de '
+                'sorts déjà lancés. Souvent remis à 0 en fin de tour.',
+            child: _StatusChip(
+              label: 'Storm ${player.storm}',
+              active: player.storm > 0,
+              danger: false,
+              onMinus: () {
+                controller.bumpStat(player.id, Stat.storm, -1);
+                buzz(haptic);
+              },
+              onPlus: () {
+                controller.bumpStat(player.id, Stat.storm, 1);
+                buzz(haptic);
+              },
             ),
-            if (showTax)
-              for (final commander in player.commanders) ...[
-                const SizedBox(width: 6),
-                HelpTip(
-                  enabled: showTips,
-                  title: 'Taxe de commandant',
-                  message:
-                      'Coût supplémentaire pour relancer ce commandant depuis '
-                      'la zone de commandement (+2 mana à chaque fois en '
-                      'général). + augmente la taxe, − la baisse.',
-                  child: _StatusChip(
-                    label: player.commanders.length == 1
-                        ? 'Taxe +${commander.tax}'
-                        : '${_shortCmd(commander.name)} +${commander.tax}',
-                    active: commander.tax > 0,
-                    danger: false,
-                    onMinus: () {
-                      controller.castCommander(commander.id, -1);
-                      buzz(haptic);
-                    },
-                    onPlus: () {
-                      controller.castCommander(commander.id, 1);
-                      buzz(haptic);
-                    },
-                  ),
+          ),
+          if (showTax)
+            for (final commander in player.commanders)
+              HelpTip(
+                enabled: showTips,
+                title: 'Taxe de commandant',
+                message:
+                    'Coût supplémentaire pour relancer ce commandant depuis '
+                    'la zone de commandement (+2 mana à chaque fois en '
+                    'général). + augmente la taxe, − la baisse.',
+                child: _StatusChip(
+                  label: player.commanders.length == 1
+                      ? 'Taxe +${commander.tax}'
+                      : '${_shortCmd(commander.name)} +${commander.tax}',
+                  active: commander.tax > 0,
+                  danger: false,
+                  onMinus: () {
+                    controller.castCommander(commander.id, -1);
+                    buzz(haptic);
+                  },
+                  onPlus: () {
+                    controller.castCommander(commander.id, 1);
+                    buzz(haptic);
+                  },
                 ),
-              ],
-            for (final counter in player.custom.take(2)) ...[
-              const SizedBox(width: 6),
-              _StatusChip(
-                label: '${counter.name} ${counter.value}',
-                active: counter.value != 0,
-                danger: false,
-                onMinus: () {
-                  controller.bumpCustom(player.id, counter.id, -1);
-                  buzz(haptic);
-                },
-                onPlus: () {
-                  controller.bumpCustom(player.id, counter.id, 1);
-                  buzz(haptic);
-                },
               ),
-            ],
-          ],
-        ),
+          for (final counter in player.custom.take(2))
+            _StatusChip(
+              label: '${counter.name} ${counter.value}',
+              active: counter.value != 0,
+              danger: false,
+              onMinus: () {
+                controller.bumpCustom(player.id, counter.id, -1);
+                buzz(haptic);
+              },
+              onPlus: () {
+                controller.bumpCustom(player.id, counter.id, 1);
+                buzz(haptic);
+              },
+            ),
+        ],
       ),
     );
   }
@@ -644,18 +616,20 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = danger
-        ? const Color(0xFF6B2030)
+        ? const Color(0xFF3A1822)
         : active
-        ? const Color(0xFF3A2A18)
-        : Colors.black.withValues(alpha: 0.28);
+        ? accent.withValues(alpha: 0.16)
+        : panelInk;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: danger
-              ? const Color(0xFFFF6B7A)
-              : Colors.white.withValues(alpha: 0.18),
+              ? dangerCrit.withValues(alpha: 0.8)
+              : active
+              ? accent.withValues(alpha: 0.55)
+              : line,
         ),
       ),
       child: Row(
@@ -670,9 +644,14 @@ class _StatusChip extends StatelessWidget {
               child: Icon(Icons.remove, size: 16),
             ),
           ),
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 96),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+            ),
           ),
           InkWell(
             onTap: onPlus,
@@ -750,11 +729,14 @@ class _LifePad extends StatelessWidget {
     required this.compact,
     required this.showFive,
     required this.startingLife,
+    required this.seatActive,
   });
 
   final GameController controller;
+
   /// Joueur du siège (son nom / badge).
   final Player seatPlayer;
+
   /// Joueur dont le gros pad change les PV (souvent l’adversaire en face).
   final Player target;
   final Color color;
@@ -762,6 +744,7 @@ class _LifePad extends StatelessWidget {
   final bool compact;
   final bool showFive;
   final int startingLife;
+  final bool seatActive;
 
   void _delta(int value) {
     controller.addLife(target.id, value);
@@ -786,16 +769,25 @@ class _LifePad extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: fill,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
           ),
           child: Center(
-            child: Text(
-              big,
-              style: TextStyle(
-                fontSize: compact ? 38 : 50,
-                fontWeight: FontWeight.w200,
-                color: textColor,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                big,
+                textHeightBehavior: const TextHeightBehavior(
+                  applyHeightToFirstAscent: false,
+                  applyHeightToLastDescent: false,
+                ),
+                style: TextStyle(
+                  fontSize: 64,
+                  height: 1,
+                  leadingDistribution: TextLeadingDistribution.even,
+                  fontWeight: FontWeight.w500,
+                  color: textColor,
+                ),
               ),
             ),
           ),
@@ -825,6 +817,7 @@ class _LifePad extends StatelessWidget {
                       five,
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
+                        height: 1,
                         color: textColor,
                       ),
                     ),
@@ -840,92 +833,264 @@ class _LifePad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _side(
-            big: '−',
-            five: '−5',
-            fill: const Color(0xFF6A2432).withValues(alpha: 0.9),
-            fiveFill: const Color(0xFF521C28),
-            textColor: const Color(0xFFFFE4E8),
-            step: -1,
-            jump: -5,
-          ),
-        ),
-        Expanded(
-          flex: 2,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bar = seatActive && constraints.maxHeight >= 78;
+        final opponent = target.id != seatPlayer.id;
+        final caption = seatActive && !bar
+            ? 'À toi de jouer'
+            : opponent
+            ? 'Vie de ${target.name}'
+            : 'Mes PV';
+        const endTurnHeight = 36.0;
+        final room =
+            constraints.maxHeight -
+            (bar ? 26 : 0) -
+            (seatActive ? endTurnHeight : 0);
+        final histLines = room >= 220
+            ? 3
+            : room >= 150
+            ? 2
+            : room >= 108
+            ? 1
+            : 0;
+        final pad = Row(
+          children: [
+            Expanded(
+              child: _side(
+                big: '−',
+                five: '−5',
+                fill: const Color(0xFF5C2432).withValues(alpha: 0.92),
+                fiveFill: const Color(0xFF421824),
+                textColor: const Color(0xFFFFE4E8),
+                step: -1,
+                jump: -5,
+              ),
+            ),
+            Expanded(
+              flex: 2,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(top: compact ? 18 : 24),
+                    child: DangerLifeDisplay(
+                      life: target.life,
+                      startingLife: startingLife,
+                      compact: compact,
+                      lifeKey: ValueKey(
+                        'life-pad-${seatPlayer.id}-${target.id}',
+                      ),
+                      onTap: () => showAmountSheet(
+                        context,
+                        title: 'PV de ${target.name}',
+                        subtitle: target.id == seatPlayer.id
+                            ? '− enlève un point, + le rend.'
+                            : 'Vie de l’adversaire. − enlève, + rend.',
+                        listenable: controller,
+                        current: () => controller.playerById(target.id).life,
+                        onDelta: (delta) =>
+                            controller.addLife(target.id, delta),
+                        onSet: (value) => controller.setLife(target.id, value),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 4,
+                    left: 2,
+                    right: 2,
+                    child: Text(
+                      caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: compact ? 10 : 12,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                        color: color.withValues(alpha: 0.95),
+                        shadows: const [
+                          Shadow(color: Colors.black87, blurRadius: 6),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Lifetap-style : un seul ± qui reste puis s’efface.
+                  Positioned(
+                    right: 0,
+                    top: compact ? 28 : 36,
+                    child: _LingeringDelta(
+                      controller: controller,
+                      playerId: target.id,
+                      compact: compact,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _side(
+                big: '+',
+                five: '+5',
+                fill: color.withValues(alpha: 0.42),
+                fiveFill: color.withValues(alpha: 0.52),
+                textColor: Colors.white,
+                step: 1,
+                jump: 5,
+              ),
+            ),
+          ],
+        );
+        return Column(
+          children: [
+            if (bar)
               Padding(
-                padding: EdgeInsets.only(top: compact ? 18 : 24),
-                child: DangerLifeDisplay(
-                  life: target.life,
-                  startingLife: startingLife,
-                  compact: compact,
-                  lifeKey: ValueKey('life-pad-${seatPlayer.id}-${target.id}'),
-                  onTap: () => showAmountSheet(
-                    context,
-                    title: 'PV de ${target.name}',
-                    subtitle: target.id == seatPlayer.id
-                        ? 'Tes points de vie'
-                        : 'Points de vie de l’adversaire',
-                    listenable: controller,
-                    current: () => controller.playerById(target.id).life,
-                    onDelta: (delta) => controller.addLife(target.id, delta),
-                    onSet: (value) => controller.setLife(target.id, value),
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'À toi de jouer',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 13,
+                      height: 1,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
-              Positioned(
-                top: 4,
-                left: 2,
-                right: 2,
-                child: Text(
-                  target.id == seatPlayer.id
-                      ? 'PV de ${target.name}'
-                      : 'PV adversaire · ${target.name}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: compact ? 10 : 12,
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                    color: color.withValues(alpha: 0.95),
-                    shadows: const [
-                      Shadow(color: Colors.black87, blurRadius: 6),
-                    ],
+            if (histLines > 0)
+              _CountHistory(
+                controller: controller,
+                playerId: target.id,
+                threshold: controller.game.commanderThreshold,
+                lines: histLines,
+                trackCommander: controller.game.trackCommanderDamage,
+              ),
+            Expanded(child: pad),
+            if (seatActive)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: SizedBox(
+                  height: endTurnHeight,
+                  width: double.infinity,
+                  child: FilledButton(
+                    key: ValueKey('fin-de-tour-${seatPlayer.id}'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () {
+                      controller.nextTurn();
+                      buzz(haptic);
+                    },
+                    child: const Text(
+                      'Fin de tour',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ),
-              // Lifetap-style : un seul ± qui reste puis s’efface.
-              Positioned(
-                right: 0,
-                top: compact ? 28 : 36,
-                child: _LingeringDelta(
-                  controller: controller,
-                  playerId: target.id,
-                  compact: compact,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _side(
-            big: '+',
-            five: '+5',
-            fill: color.withValues(alpha: 0.42),
-            fiveFill: color.withValues(alpha: 0.52),
-            textColor: Colors.white,
-            step: 1,
-            jump: 5,
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
+  }
+}
+
+/// Derniers décomptes du siège, du plus récent au plus ancien.
+class _CountHistory extends StatelessWidget {
+  const _CountHistory({
+    required this.controller,
+    required this.playerId,
+    required this.threshold,
+    required this.lines,
+    required this.trackCommander,
+  });
+
+  final GameController controller;
+  final String playerId;
+  final int threshold;
+  final int lines;
+  final bool trackCommander;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final rows = _rows();
+        final style = TextStyle(
+          fontSize: 11,
+          height: 1.15,
+          fontWeight: FontWeight.w700,
+          color: Colors.white.withValues(alpha: 0.78),
+        );
+        if (rows.isEmpty) {
+          return Text(
+            '− enlève un point · + le rend',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: style,
+          );
+        }
+        return Column(
+          children: [
+            for (final row in rows.take(lines))
+              Text(
+                row,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: style,
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<String> _rows() {
+    final stamped = <({int at, String text})>[];
+    for (final change in controller.recentLifeChangesFor(playerId, limit: 12)) {
+      if (change.reason != null) continue;
+      stamped.add((
+        at: change.atMs ?? 0,
+        text: 'Vie ${change.deltaLabel} · ${change.from} → ${change.to}',
+      ));
+    }
+    if (trackCommander) {
+      for (final change in controller.cmdDamageLog) {
+        if (change.defenderId != playerId || change.delta == 0) continue;
+        final signed = -change.delta;
+        final mark = signed > 0 ? '+$signed' : '$signed';
+        final life =
+            change.lifeFrom != null &&
+                change.lifeTo != null &&
+                change.lifeFrom != change.lifeTo
+            ? ' · vie ${change.lifeFrom} → ${change.lifeTo}'
+            : '';
+        final who = change.commanderLabel.replaceFirst(RegExp(r'^Cdt '), '');
+        stamped.add((
+          at: change.atMs ?? 0,
+          text: '$who $mark · ${change.toTaken}/$threshold$life',
+        ));
+      }
+    }
+    stamped.sort((a, b) => b.at.compareTo(a.at));
+    return [for (final row in stamped) row.text];
   }
 }
 
@@ -1029,9 +1194,7 @@ class _LingeringDeltaState extends State<_LingeringDelta> {
                   color: delta < 0
                       ? const Color(0xFFFF8A9A)
                       : const Color(0xFF7DFFB2),
-                  shadows: const [
-                    Shadow(color: Colors.black87, blurRadius: 8),
-                  ],
+                  shadows: const [Shadow(color: Colors.black87, blurRadius: 8)],
                 ),
               ),
             ),
@@ -1059,8 +1222,10 @@ class _CommanderStrip extends StatelessWidget {
   });
 
   final GameController controller;
+
   /// Siège : propriétaire des Cdt affichés.
   final Player attacker;
+
   /// Gros pad : qui subit les Cdt (adversaire en face).
   final Player defender;
   final bool haptic;
@@ -1124,12 +1289,15 @@ class _CommanderStrip extends StatelessWidget {
     }
 
     const gap = 8.0;
-    const minW = 168.0;
     const maxW = 240.0;
     final count = hits.isEmpty ? 1 : hits.length;
-    final fitted = count == 1
-        ? panelWidth.clamp(minW, maxW)
-        : ((panelWidth - gap * (count - 1)) / count).clamp(minW, maxW);
+    final available = panelWidth.clamp(0.0, maxW);
+    final share = count <= 1
+        ? available
+        : (panelWidth - gap * (count - 1)) / count;
+    final fitted = share >= 132 && share <= maxW
+        ? share
+        : (available < 132 ? available : 148.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1138,8 +1306,10 @@ class _CommanderStrip extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 4, left: 2),
           child: Text(
             outgoing
-                ? 'Cdt → ${defender.name} · + dégât · − annuler'
-                : 'Dégâts de commandant · + dégât · − annuler',
+                ? 'Commandant · − enlève 1 vie · + rend'
+                : 'Commandant reçu · − enlève · + rend',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 10,
               letterSpacing: 0.3,
@@ -1322,12 +1492,12 @@ class _CmdChipState extends State<_CmdChip> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        // + rouge = infliger ; − vert = annuler.
+                        // − enlève 1 point (vie comprise). + rend le point.
                         _CmdSideButton(
-                          key: ValueKey('chip-plus-$defenderId-$commanderId'),
-                          icon: Icons.add_rounded,
-                          label: 'DÉGÂT  (+1)',
-                          tooltip: 'Infliger 1 à l’adversaire',
+                          key: ValueKey('chip-minus-$defenderId-$commanderId'),
+                          icon: Icons.remove_rounded,
+                          label: 'ENLEVER 1',
+                          tooltip: 'Enlève 1 point de commandant et 1 vie',
                           foreground: const Color(0xFFFFF0F2),
                           background: const Color(0xFFB03A4A),
                           wide: true,
@@ -1379,12 +1549,10 @@ class _CmdChipState extends State<_CmdChip> {
                         ),
                         const SizedBox(height: 12),
                         _CmdSideButton(
-                          key: ValueKey(
-                            'chip-minus-$defenderId-$commanderId',
-                          ),
-                          icon: Icons.remove_rounded,
-                          label: 'ANNULER  (−1)',
-                          tooltip: 'Annuler 1 dégât',
+                          key: ValueKey('chip-plus-$defenderId-$commanderId'),
+                          icon: Icons.add_rounded,
+                          label: 'RENDRE 1',
+                          tooltip: 'Rend 1 point de commandant et 1 vie',
                           foreground: const Color(0xFFE8FFF2),
                           background: const Color(0xFF1F8A58),
                           wide: true,
@@ -1418,180 +1586,152 @@ class _CmdChipState extends State<_CmdChip> {
     final lethal = widget.hit.remaining <= 0;
     final label = _label;
 
+    final side = widget.width < 170 ? 36.0 : 44.0;
     return SizedBox(
       width: widget.width,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: lethal
-              ? const Color(0xFF3A1520)
-              : const Color(0xFF0E1118).withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(16),
+          color: lethal ? const Color(0xFF3A1822) : panelInk,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: lethal
-                ? const Color(0xFFFF6B7A)
-                : color.withValues(alpha: 0.75),
-            width: 1.5,
+            color: lethal ? dangerCrit : color.withValues(alpha: 0.7),
           ),
         ),
-        child: Row(
-          children: [
-            // − gauche = annuler (vert).
-            Semantics(
-              button: true,
-              label: 'Annuler dégât de commandant',
-              child: RepeatTap(
-                onTick: () => _hit(-1),
-                child: SizedBox(
-                  key: ValueKey(
-                    'chip-minus-${widget.defenderId}-${widget.hit.commander.id}',
-                  ),
-                  width: 48,
-                  child: const DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Color(0xFF1F8A58),
-                      borderRadius: BorderRadius.horizontal(
-                        left: Radius.circular(14.5),
-                      ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(13),
+          child: Row(
+            children: [
+              // − gauche = enlever un point (vie comprise).
+              Semantics(
+                button: true,
+                label: 'Enlever un point de commandant',
+                child: RepeatTap(
+                  onTick: () => _hit(1),
+                  child: SizedBox(
+                    key: ValueKey(
+                      'chip-minus-${widget.defenderId}-${widget.hit.commander.id}',
                     ),
-                    child: Center(
-                      child: Text(
-                        '−',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w300,
-                          color: Color(0xFFE8FFF2),
-                          height: 1,
+                    width: side,
+                    child: const ColoredBox(
+                      color: Color(0xFF6A2A38),
+                      child: Center(
+                        child: Text(
+                          '−',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFFFE4E8),
+                            height: 1,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Expanded(
-              child: InkWell(
-                key: ValueKey(
-                  'chip-open-${widget.defenderId}-${widget.hit.commander.id}',
-                ),
-                onTap: _openZoom,
-                onLongPress: () => showLifeLogSheet(
-                  context,
-                  widget.controller,
-                  playerId: widget.defenderId,
-                  initialTab: LifeLogTab.commander,
-                  commanderId: widget.hit.commander.id,
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ListenableBuilder(
-                    listenable: widget.controller,
-                    builder: (context, _) {
-                      final taken = widget.controller
-                              .playerById(widget.defenderId)
-                              .damageTaken[widget.hit.commander.id] ??
-                          0;
-                      final remaining =
-                          (widget.threshold - taken).clamp(0, widget.threshold);
-                      final last = widget.controller.lastCmdDamageChangeFor(
-                        defenderId: widget.defenderId,
-                        commanderId: widget.hit.commander.id,
-                      );
-                      final ko = remaining <= 0;
-                      final liveColor = ko
-                          ? const Color(0xFFFFB4BC)
-                          : remaining <= 6
-                          ? const Color(0xFFFFC46B)
-                          : Colors.white;
-                      final dense = widget.dense;
-                      return FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: dense ? 9 : 10,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              '$taken',
-                              style: lifeStyle(dense ? 18 : 22, liveColor),
-                            ),
-                            Text(
-                              ko
-                                  ? 'KO'
-                                  : '/ $remaining restants',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: dense ? 9 : 10,
-                                fontWeight: FontWeight.w800,
-                                color: liveColor.withValues(alpha: 0.9),
-                              ),
-                            ),
-                            if (last != null)
+              Expanded(
+                child: InkWell(
+                  key: ValueKey(
+                    'chip-open-${widget.defenderId}-${widget.hit.commander.id}',
+                  ),
+                  onTap: _openZoom,
+                  onLongPress: () => showLifeLogSheet(
+                    context,
+                    widget.controller,
+                    playerId: widget.defenderId,
+                    initialTab: LifeLogTab.commander,
+                    commanderId: widget.hit.commander.id,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: ListenableBuilder(
+                      listenable: widget.controller,
+                      builder: (context, _) {
+                        final taken =
+                            widget.controller
+                                .playerById(widget.defenderId)
+                                .damageTaken[widget.hit.commander.id] ??
+                            0;
+                        final remaining = (widget.threshold - taken).clamp(
+                          0,
+                          widget.threshold,
+                        );
+                        final ko = remaining <= 0;
+                        final liveColor = ko
+                            ? const Color(0xFFFFB4BC)
+                            : remaining <= 6
+                            ? const Color(0xFFFFC46B)
+                            : Colors.white;
+                        final dense = widget.dense;
+                        return FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
                               Text(
-                                last.delta > 0
-                                    ? '+${last.delta}'
-                                    : '${last.delta}',
+                                label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.1,
-                                  color: last.delta > 0
-                                      ? const Color(0xFFFF8A95)
-                                      : const Color(0xFF7DFFB2),
+                                  fontSize: dense ? 9 : 10,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            // + droite = infliger (rouge).
-            Semantics(
-              button: true,
-              label: 'Dégât de commandant',
-              child: RepeatTap(
-                onTick: () => _hit(1),
-                child: SizedBox(
-                  key: ValueKey(
-                    'chip-plus-${widget.defenderId}-${widget.hit.commander.id}',
-                  ),
-                  width: 48,
-                  child: const DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Color(0xFF6A2432),
-                      borderRadius: BorderRadius.horizontal(
-                        right: Radius.circular(14.5),
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '+',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w300,
-                          color: Color(0xFFFFE4E8),
-                          height: 1,
-                        ),
-                      ),
+                              Text(
+                                '$remaining',
+                                style: lifeStyle(dense ? 18 : 22, liveColor),
+                              ),
+                              Text(
+                                ko ? 'KO' : '$taken / ${widget.threshold}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: dense ? 9 : 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: liveColor.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+              // + droite = rendre le point.
+              Semantics(
+                button: true,
+                label: 'Rendre un point de commandant',
+                child: RepeatTap(
+                  onTick: () => _hit(-1),
+                  child: SizedBox(
+                    key: ValueKey(
+                      'chip-plus-${widget.defenderId}-${widget.hit.commander.id}',
+                    ),
+                    width: side,
+                    child: const ColoredBox(
+                      color: Color(0xFF157A52),
+                      child: Center(
+                        child: Text(
+                          '+',
+                          style: TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFE8FFF2),
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

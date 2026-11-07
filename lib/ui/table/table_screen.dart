@@ -17,6 +17,7 @@ import 'package:mtg_table/ui/sheets/recap_sheet.dart';
 import 'package:mtg_table/ui/sheets/transfer_sheet.dart';
 import 'package:mtg_table/ui/tools/card_search_screen.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 import 'package:mtg_table/ui/widgets/player_panel.dart';
 
 class TableScreen extends StatefulWidget {
@@ -34,6 +35,8 @@ class TableScreen extends StatefulWidget {
   final AppSettings settings;
   final ValueChanged<AppSettings> onSettings;
   final VoidCallback onLeave;
+  // Conservé : le bandeau global a été retiré, le tour s’affiche sur le siège.
+  // ignore: unused_field
   final VoidCallback onCoachDismissed;
   final Future<bool> Function()? onArchiveWin;
 
@@ -45,6 +48,7 @@ class _TableScreenState extends State<TableScreen> {
   Timer? _toastTimer;
   String? _toast;
   int _seenFlash = 0;
+
   /// Siège affiché en mode Focus (indépendant du tour actif).
   String? _focusPlayerId;
 
@@ -155,7 +159,6 @@ class _TableScreenState extends State<TableScreen> {
   @override
   Widget build(BuildContext context) {
     final game = widget.controller.game;
-    final nextIndex = _nextIndex(game);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -164,208 +167,153 @@ class _TableScreenState extends State<TableScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFF0B1018),
-                Color(0xFF07090E),
-                Color(0xFF0A1210),
-              ],
-            ),
-          ),
+          decoration: const BoxDecoration(gradient: pageGradient),
           child: SafeArea(
             child: Stack(
               children: [
                 Column(
                   children: [
                     _Bar(
-                    controller: widget.controller,
-                    canUndo: widget.controller.canUndo,
-                    canRedo: widget.controller.canRedo,
-                    onLeave: _leave,
-                    onUndo: widget.controller.undo,
-                    onRedo: widget.controller.redo,
-                    onDice: () => showDiceSheet(context, widget.controller),
-                    onHistory: () =>
-                        showHistorySheet(context, widget.controller),
-                    onMenu: (action) {
-                      switch (action) {
-                        case _Menu.players:
-                          showPlayersSheet(context, widget.controller);
-                        case _Menu.first:
-                          _redrawFirst();
-                        case _Menu.cardJournal:
-                          showCardJournalSheet(context, widget.controller);
-                        case _Menu.history:
-                          showHistorySheet(context, widget.controller);
-                        case _Menu.dayNight:
-                          final next = switch (game.dayState) {
-                            DayState.unset || DayState.night => DayState.day,
-                            DayState.day => DayState.night,
-                          };
-                          widget.controller.setDay(next);
-                        case _Menu.tips:
-                          final tipsOn = !widget.settings.beginnerTips;
-                          widget.onSettings(
-                            widget.settings.copyWith(beginnerTips: tipsOn),
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                tipsOn
-                                    ? 'Bulles d’aide activées — appui long '
-                                        'sur Monarque, poison…'
-                                    : 'Bulles d’aide désactivées',
-                              ),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        case _Menu.transfer:
-                          showExportTransferSheet(context, widget.controller);
-                        case _Menu.search:
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const CardSearchScreen(),
-                            ),
-                          );
-                        case _Menu.settings:
-                          showSettingsSheet(
-                            context,
-                            settings: widget.settings,
-                            onChanged: widget.onSettings,
-                          );
-                        case _Menu.rotate:
-                          widget.controller.rotateSeats();
-                        case _Menu.shuffle:
-                          widget.controller.shuffleSeats();
-                        case _Menu.treacheryDeal:
-                          widget.controller.dealTreacheryRoles();
-                        case _Menu.rematch:
-                          _restart(initial: RestartKind.rematch);
-                        case _Menu.reset:
-                          _restart(initial: RestartKind.zero);
-                        case _Menu.recap:
-                          showGameRecapSheet(context, widget.controller);
-                        case _Menu.about:
-                          _about();
-                      }
-                    },
-                    showCardJournal: widget.settings.cardJournalAssist,
-                    showTreachery:
-                        game.format == MatchFormat.treachery,
-                    beginnerTips: widget.settings.beginnerTips,
-                  ),
-                  if (!widget.settings.coachSeen)
-                    _Coach(onDismiss: widget.onCoachDismissed),
-                  if (game.victoryBanner() != null)
-                    _VictoryBanner(
-                      text: game.victoryBanner()!,
-                      onRematch: () =>
-                          _restart(initial: RestartKind.rematch),
-                      onZero: () => _restart(initial: RestartKind.zero),
-                      onRecap: () =>
-                          showGameRecapSheet(context, widget.controller),
-                    ),
-                  if (widget.settings.showLifeFeed &&
-                      widget.controller.lifeLog.isNotEmpty)
-                    _LifeFeedStrip(
                       controller: widget.controller,
-                    ),
-                  _TurnTimerBar(controller: widget.controller),
-                  _TableExtras(controller: widget.controller),
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final fourSides = useFourSides(
-                          width: constraints.maxWidth,
-                          height: constraints.maxHeight,
-                          players: game.players.length,
-                        );
-                        final plan = planFor(
-                          players: game.players.length,
-                          fourSides: fourSides,
-                        ).oriented(game.seatShift, game.players.length);
-                        final list = preferList(
-                          mode: widget.settings.viewMode,
-                          width: constraints.maxWidth,
-                          height: constraints.maxHeight,
-                          plan: plan,
-                        );
-                        if (list) {
-                          final focusMode =
-                              widget.settings.viewMode == ViewMode.focus;
-                          final focusId = _focusPlayerId ??
-                              game.players[game.activeIndex].id;
-                          return _ListTable(
-                            controller: widget.controller,
-                            haptic: widget.settings.haptic,
-                            showTips: widget.settings.beginnerTips,
-                            height: constraints.maxHeight,
-                            focusMode: focusMode,
-                            focusPlayerId: focusId,
-                            onFocusPlayer: focusMode
-                                ? (id) => setState(() => _focusPlayerId = id)
-                                : null,
-                          );
+                      canUndo: widget.controller.canUndo,
+                      canRedo: widget.controller.canRedo,
+                      onLeave: _leave,
+                      onUndo: widget.controller.undo,
+                      onRedo: widget.controller.redo,
+                      onDice: () => showDiceSheet(context, widget.controller),
+                      onHistory: () =>
+                          showHistorySheet(context, widget.controller),
+                      onMenu: (action) {
+                        switch (action) {
+                          case _Menu.players:
+                            showPlayersSheet(context, widget.controller);
+                          case _Menu.first:
+                            _redrawFirst();
+                          case _Menu.cardJournal:
+                            showCardJournalSheet(context, widget.controller);
+                          case _Menu.history:
+                            showHistorySheet(context, widget.controller);
+                          case _Menu.dayNight:
+                            final next = switch (game.dayState) {
+                              DayState.unset || DayState.night => DayState.day,
+                              DayState.day => DayState.night,
+                            };
+                            widget.controller.setDay(next);
+                          case _Menu.tips:
+                            final tipsOn = !widget.settings.beginnerTips;
+                            widget.onSettings(
+                              widget.settings.copyWith(beginnerTips: tipsOn),
+                            );
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  tipsOn
+                                      ? 'Bulles d’aide activées — appui long '
+                                            'sur Monarque, poison…'
+                                      : 'Bulles d’aide désactivées',
+                                ),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          case _Menu.transfer:
+                            showExportTransferSheet(context, widget.controller);
+                          case _Menu.search:
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const CardSearchScreen(),
+                              ),
+                            );
+                          case _Menu.settings:
+                            showSettingsSheet(
+                              context,
+                              settings: widget.settings,
+                              onChanged: widget.onSettings,
+                            );
+                          case _Menu.rotate:
+                            widget.controller.rotateSeats();
+                          case _Menu.shuffle:
+                            widget.controller.shuffleSeats();
+                          case _Menu.treacheryDeal:
+                            widget.controller.dealTreacheryRoles();
+                          case _Menu.rematch:
+                            _restart(initial: RestartKind.rematch);
+                          case _Menu.reset:
+                            _restart(initial: RestartKind.zero);
+                          case _Menu.recap:
+                            showGameRecapSheet(context, widget.controller);
+                          case _Menu.about:
+                            _about();
                         }
-                        if (plan.fourSides) {
-                          return _FourSides(
+                      },
+                      showCardJournal: widget.settings.cardJournalAssist,
+                      showTreachery: game.format == MatchFormat.treachery,
+                      beginnerTips: widget.settings.beginnerTips,
+                    ),
+                    if (game.victoryBanner() != null)
+                      _VictoryBanner(
+                        text: game.victoryBanner()!,
+                        onRematch: () => _restart(initial: RestartKind.rematch),
+                        onZero: () => _restart(initial: RestartKind.zero),
+                        onRecap: () =>
+                            showGameRecapSheet(context, widget.controller),
+                      ),
+                    if (widget.settings.showLifeFeed &&
+                        widget.controller.lifeLog.isNotEmpty)
+                      _LifeFeedStrip(controller: widget.controller),
+                    if (game.timersEnabled)
+                      _TurnTimerBar(controller: widget.controller),
+                    _TableExtras(controller: widget.controller),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final fourSides = useFourSides(
+                            width: constraints.maxWidth,
+                            height: constraints.maxHeight,
+                            players: game.players.length,
+                          );
+                          final plan = planFor(
+                            players: game.players.length,
+                            fourSides: fourSides,
+                          ).oriented(game.seatShift, game.players.length);
+                          final list = preferList(
+                            mode: widget.settings.viewMode,
+                            width: constraints.maxWidth,
+                            height: constraints.maxHeight,
+                            plan: plan,
+                          );
+                          if (list) {
+                            final focusMode =
+                                widget.settings.viewMode == ViewMode.focus;
+                            final focusId =
+                                _focusPlayerId ??
+                                game.players[game.activeIndex].id;
+                            return _ListTable(
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                              height: constraints.maxHeight,
+                              focusMode: focusMode,
+                              focusPlayerId: focusId,
+                              onFocusPlayer: focusMode
+                                  ? (id) => setState(() => _focusPlayerId = id)
+                                  : null,
+                            );
+                          }
+                          if (plan.fourSides) {
+                            return _FourSides(
+                              plan: plan,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          return _TwoSides(
                             plan: plan,
                             controller: widget.controller,
                             haptic: widget.settings.haptic,
                             showTips: widget.settings.beginnerTips,
                           );
-                        }
-                        return _TwoSides(
-                          plan: plan,
-                          controller: widget.controller,
-                          haptic: widget.settings.haptic,
-                          showTips: widget.settings.beginnerTips,
-                        );
-                      },
-                    ),
-                  ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Tour de ${game.players[game.activeIndex].name}',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              color: playerColor(
-                                game.players[game.activeIndex].color,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Color.alphaBlend(
-                                playerColor(
-                                  game.players[nextIndex].color,
-                                ).withValues(alpha: 0.35),
-                                accent,
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            onPressed: widget.controller.nextTurn,
-                            icon: const Icon(
-                              Icons.skip_next_rounded,
-                              size: 26,
-                            ),
-                            label: Text(
-                              'Tour ${game.turnCount} · Tour suivant · '
-                              '${game.players[nextIndex].name}',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
+                        },
                       ),
                     ),
                   ],
@@ -402,16 +350,6 @@ class _TableScreenState extends State<TableScreen> {
   }
 }
 
-int _nextIndex(Game game) {
-  var next = game.activeIndex;
-  var guard = 0;
-  do {
-    next = (next + 1) % game.players.length;
-    guard++;
-  } while (game.players[next].conceded && guard < game.players.length);
-  return next;
-}
-
 enum _Menu {
   players,
   first,
@@ -441,10 +379,13 @@ class _LifeFeedStrip extends StatelessWidget {
     final log = controller.lifeLog;
     if (log.isEmpty) return const SizedBox.shrink();
     final latest = log.first;
-    final preview = log.take(3).map((e) {
-      if (e.delta == 0) return e.line;
-      return '${e.playerName} ${e.deltaLabel}';
-    }).join(' · ');
+    final preview = log
+        .take(3)
+        .map((e) {
+          if (e.delta == 0) return e.line;
+          return '${e.playerName} ${e.deltaLabel}';
+        })
+        .join(' · ');
     final extra = log.length > 3 ? log.length - 3 : 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
@@ -553,7 +494,7 @@ class _Bar extends StatelessWidget {
                     fontSize: 15,
                   ),
                 ),
-                _LiveClocks(controller: controller),
+                if (game.timersEnabled) _LiveClocks(controller: controller),
               ],
             ),
           ),
@@ -687,8 +628,7 @@ class _LiveClocksState extends State<_LiveClocks> {
       final over = widget.controller.turnOverAlert;
       if (over && !_alerted) {
         _alerted = true;
-        final chess =
-            widget.controller.game.timerMode == TimerMode.chess;
+        final chess = widget.controller.game.timerMode == TimerMode.chess;
         widget.controller.flash(
           chess
               ? 'Banque épuisée — passez la main ?'
@@ -729,7 +669,7 @@ class _LiveClocksState extends State<_LiveClocks> {
         fontSize: 11,
         fontWeight: FontWeight.w700,
         color: (over || (chess && bank.inSeconds < 60))
-            ? const Color(0xFFFF8FA3)
+            ? loss
             : Colors.white.withValues(alpha: 0.55),
       ),
     );
@@ -756,45 +696,15 @@ class _BarIcon extends StatelessWidget {
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
       constraints: BoxConstraints(
-        minWidth: emphasize ? 48 : 40,
-        minHeight: emphasize ? 48 : 40,
+        minWidth: emphasize ? 44 : 36,
+        minHeight: emphasize ? 44 : 36,
       ),
       padding: EdgeInsets.zero,
       onPressed: onPressed,
       icon: Icon(
         icon,
         size: emphasize ? 28 : 22,
-        color: emphasize && enabled
-            ? const Color(0xFFFFC46B)
-            : null,
-      ),
-    );
-  }
-}
-
-class _Coach extends StatelessWidget {
-  const _Coach({required this.onDismiss});
-
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0xFF243044),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        child: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'À toi de jouer = ton tour. Petit « X PV » = tes points. '
-                'Gros −/+ = PV adversaire. Sur Cdt : + (rouge) inflige, '
-                '− annule. Chaque siège montre son commandant.',
-              ),
-            ),
-            IconButton(onPressed: onDismiss, icon: const Icon(Icons.close)),
-          ],
-        ),
+        color: emphasize && enabled ? accentGold : null,
       ),
     );
   }
@@ -817,9 +727,10 @@ class _VictoryBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF2F4A28), Color(0xFF1E3320)],
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border(
+          bottom: BorderSide(color: accent.withValues(alpha: 0.45)),
         ),
       ),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
@@ -837,24 +748,30 @@ class _VictoryBanner extends StatelessWidget {
               Expanded(
                 child: OutlinedButton(
                   onPressed: onRecap,
-                  child: const Text('Récap'),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Récap'),
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
                   onPressed: onRematch,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF3D8B5C),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Revanche'),
                   ),
-                  child: const Text('Revanche'),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
                   onPressed: onZero,
-                  child: const Text('À zéro'),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('À zéro'),
+                  ),
                 ),
               ),
             ],
@@ -925,7 +842,7 @@ class _TurnTimerBarState extends State<_TurnTimerBar> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFFFF8FA3),
+                    color: dangerCrit,
                   ),
                 ),
               ),
@@ -1218,9 +1135,7 @@ class _SchemePanel extends StatelessWidget {
                     context: context,
                     builder: (context) => AlertDialog(
                       title: Text(game.currentScheme),
-                      content: Text(
-                        '$villain\n\n${game.currentSchemeEffect}',
-                      ),
+                      content: Text('$villain\n\n${game.currentSchemeEffect}'),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context),
@@ -1359,8 +1274,7 @@ class _ListTable extends StatelessWidget {
               itemBuilder: (context, index) {
                 final player = players[index];
                 final selected = player.id == focused.id;
-                final isTurn =
-                    index == controller.game.activeIndex;
+                final isTurn = index == controller.game.activeIndex;
                 return ActionChip(
                   avatar: CircleAvatar(
                     backgroundColor: playerColor(player.color),
@@ -1574,7 +1488,10 @@ class _RotatedSeat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (quarterTurns % 4 == 0) return child;
-    return RotatedBox(quarterTurns: quarterTurns % 4, child: child);
+    final turns = quarterTurns % 4;
+    final body = turns == 0
+        ? child
+        : RotatedBox(quarterTurns: turns, child: child);
+    return SeatReading(quarterTurns: turns, child: body);
   }
 }

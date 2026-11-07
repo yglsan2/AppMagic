@@ -200,9 +200,9 @@ class _ThreatPanelShellState extends State<ThreatPanelShell>
       builder: (context, child) {
         final t = widget.defeated ? 0.0 : _pulse.value;
         final borderW = widget.active
-            ? 4.5
+            ? 2.4
             : (widget.defeated || widget.band != LifeBand.safe
-                ? 2.6 + (widget.band == LifeBand.critical ? 0.8 * t : 0)
+                ? 1.6 + (widget.band == LifeBand.critical ? 0.6 * t : 0)
                 : 1.0);
         final wash = switch (widget.band) {
           LifeBand.safe => widget.active ? 0.08 : 0.0,
@@ -238,12 +238,12 @@ class _ThreatPanelShellState extends State<ThreatPanelShell>
                       widget.playerTint.withValues(
                         alpha: widget.active ? 0.22 : 0.10,
                       ),
-                      const Color(0xFF10141C),
+                      ink,
                     ),
                   ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: widget.defeated
                     ? dangerCrit
