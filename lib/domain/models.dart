@@ -1129,6 +1129,7 @@ class AppSettings {
     required this.chessBankSeconds,
     required this.coachSeen,
     required this.showLifeFeed,
+    required this.rememberCommanderLog,
     required this.cardJournalAssist,
     required this.handicapsEnabled,
     required this.beginnerTips,
@@ -1147,9 +1148,10 @@ class AppSettings {
     chessBankSeconds: 1200,
     coachSeen: false,
     showLifeFeed: true,
+    rememberCommanderLog: true,
     cardJournalAssist: true,
     handicapsEnabled: false,
-    beginnerTips: true,
+    beginnerTips: false,
   );
 
   final bool haptic;
@@ -1166,6 +1168,8 @@ class AppSettings {
   final int chessBankSeconds;
   final bool coachSeen;
   final bool showLifeFeed;
+  /// Historique local des coups de commandant (pris / reste avant la défaite).
+  final bool rememberCommanderLog;
   /// Journal Scryfall + suggestions d’effets (option, confirmation joueur).
   final bool cardJournalAssist;
   /// Handicaps de niveau de deck (PV de départ).
@@ -1186,6 +1190,7 @@ class AppSettings {
     int? chessBankSeconds,
     bool? coachSeen,
     bool? showLifeFeed,
+    bool? rememberCommanderLog,
     bool? cardJournalAssist,
     bool? handicapsEnabled,
     bool? beginnerTips,
@@ -1203,6 +1208,8 @@ class AppSettings {
       chessBankSeconds: chessBankSeconds ?? this.chessBankSeconds,
       coachSeen: coachSeen ?? this.coachSeen,
       showLifeFeed: showLifeFeed ?? this.showLifeFeed,
+      rememberCommanderLog:
+          rememberCommanderLog ?? this.rememberCommanderLog,
       cardJournalAssist: cardJournalAssist ?? this.cardJournalAssist,
       handicapsEnabled: handicapsEnabled ?? this.handicapsEnabled,
       beginnerTips: beginnerTips ?? this.beginnerTips,
@@ -1222,6 +1229,7 @@ class AppSettings {
     'chessBankSeconds': chessBankSeconds,
     'coachSeen': coachSeen,
     'showLifeFeed': showLifeFeed,
+    'rememberCommanderLog': rememberCommanderLog,
     'cardJournalAssist': cardJournalAssist,
     'handicapsEnabled': handicapsEnabled,
     'beginnerTips': beginnerTips,
@@ -1247,9 +1255,10 @@ class AppSettings {
       chessBankSeconds: asInt(json['chessBankSeconds'], 1200),
       coachSeen: json['coachSeen'] as bool? ?? false,
       showLifeFeed: json['showLifeFeed'] as bool? ?? true,
+      rememberCommanderLog: json['rememberCommanderLog'] as bool? ?? true,
       cardJournalAssist: json['cardJournalAssist'] as bool? ?? true,
       handicapsEnabled: json['handicapsEnabled'] as bool? ?? false,
-      beginnerTips: json['beginnerTips'] as bool? ?? true,
+      beginnerTips: json['beginnerTips'] as bool? ?? false,
     );
   }
 }

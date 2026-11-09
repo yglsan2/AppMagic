@@ -8,6 +8,8 @@ class DangerLifeDisplay extends StatefulWidget {
     required this.life,
     required this.startingLife,
     required this.compact,
+    this.fontSize,
+    this.tight = false,
     this.lifeKey,
     this.onTap,
   });
@@ -15,6 +17,12 @@ class DangerLifeDisplay extends StatefulWidget {
   final int life;
   final int startingLife;
   final bool compact;
+
+  /// Taille du chiffre. Sinon 68 en compact, 92 sinon.
+  final double? fontSize;
+
+  /// Sans le coussin autour du chiffre (ligne de PV perso).
+  final bool tight;
   final Key? lifeKey;
   final VoidCallback? onTap;
 
@@ -73,7 +81,7 @@ class _DangerLifeDisplayState extends State<DangerLifeDisplay>
   @override
   Widget build(BuildContext context) {
     final color = lifeBandColor(_band);
-    final size = widget.compact ? 68.0 : 92.0;
+    final size = widget.fontSize ?? (widget.compact ? 68.0 : 92.0);
 
     return GestureDetector(
       key: widget.lifeKey,
@@ -88,7 +96,9 @@ class _DangerLifeDisplayState extends State<DangerLifeDisplay>
           return Transform.scale(
             scale: scale,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: widget.tight
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 boxShadow: _band == LifeBand.safe

@@ -46,6 +46,33 @@ class CountersSheet extends StatelessWidget {
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Monarque'),
+              subtitle: const Text(
+                'Un seul à la table. Pioche en fin de tour.',
+              ),
+              value: controller.game.monarchId == playerId,
+              onChanged: (_) => controller.toggleMonarch(playerId),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Initiative'),
+              subtitle: const Text('Donjon. Une seule personne à la fois.'),
+              value: controller.game.initiativeId == playerId,
+              onChanged: (_) => controller.toggleInitiative(playerId),
+            ),
+            if (controller.game.trackCommanderTax)
+              for (final commander in player.commanders)
+                _StatRow(
+                  label: player.commanders.length == 1
+                      ? 'Taxe ${commander.name}'
+                      : 'Taxe ${commander.name}',
+                  value: commander.tax,
+                  onDelta: (delta) =>
+                      controller.castCommander(commander.id, delta),
+                ),
+            const Divider(),
             for (final stat in Stat.values)
               if (stat != Stat.signature ||
                   controller.game.format == MatchFormat.oathbreaker)
@@ -214,8 +241,8 @@ class _RoundIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 42,
-      height: 42,
+      width: 48,
+      height: 48,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.28),
@@ -254,7 +281,7 @@ class _ManaPip extends StatelessWidget {
             RepeatTap(
               onTick: () => onDelta(-1),
               child: const SizedBox(
-                width: 32,
+                width: 44,
                 height: 48,
                 child: Icon(Icons.remove),
               ),
@@ -276,7 +303,7 @@ class _ManaPip extends StatelessWidget {
             RepeatTap(
               onTick: () => onDelta(1),
               child: const SizedBox(
-                width: 32,
+                width: 44,
                 height: 48,
                 child: Icon(Icons.add),
               ),

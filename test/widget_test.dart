@@ -37,6 +37,9 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: TableScreen(
+          key: ValueKey(
+            '${size.width}x${size.height}x${controller.game.players.length}',
+          ),
           controller: controller,
           settings: AppSettings.defaults.copyWith(
             haptic: false,
@@ -73,6 +76,104 @@ void main() {
       }
       controller.dispose();
     }
+  });
+
+  testWidgets('5 à 8 joueurs gardent le même plateau, empilé', (tester) async {
+    for (final count in [5, 6, 8]) {
+      final controller = GameController(
+        game: Game.start(
+          playerCount: count,
+          names: [for (var i = 1; i <= count; i++) 'Joueur $i'],
+        ),
+      );
+      addTearDown(controller.dispose);
+      for (final size in const [
+        Size(360, 800),
+        Size(800, 360),
+        Size(1280, 800),
+      ]) {
+        await pumpTable(tester, size, controller);
+      final error = tester.takeException();
+      if (error != null) {
+        final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
+        expect(tiny, isTrue, reason: '$count joueurs : $error');
+      }
+      expect(find.text('Mes PV'), findsWidgets);
+      expect(find.text('Tous adv.'), findsWidgets);
+      expect(find.text('Reçu'), findsWidgets);
+      expect(find.text('−5'), findsWidgets);
+      expect(find.text('+5'), findsWidgets);
+      }
+    }
+  });
+
+  testWidgets('écran tactile : empilé, téléphone, ou 4 quarts', (tester) async {
+    Future<void> pick(String label) async {
+      await tester.tap(find.byTooltip('Disposition de l’écran'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text(label).last);
+      await tester.pump();
+    }
+
+    void noOverflow(Object? error, String why) {
+      if (error == null) return;
+      final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
+      expect(tiny, isTrue, reason: '$why : $error');
+    }
+
+    final four = GameController(
+      game: Game.start(
+        playerCount: 4,
+        names: const ['Ana', 'Bo', 'Célia', 'Dan'],
+      ),
+    );
+    addTearDown(four.dispose);
+    for (final size in const [Size(360, 800), Size(1280, 800)]) {
+      await pumpTable(tester, size, four);
+      await pick('4 écrans');
+      noOverflow(tester.takeException(), '4 écrans $size');
+      expect(find.text('Mes PV'), findsWidgets);
+      await pick('Comptes empilés');
+      noOverflow(tester.takeException(), 'empilés $size');
+      expect(find.text('Tous adv.'), findsWidgets);
+      await pick('Façon téléphone');
+      noOverflow(tester.takeException(), 'téléphone $size');
+    }
+
+    final eight = GameController(
+      game: Game.start(
+        playerCount: 8,
+        names: [for (var i = 1; i <= 8; i++) 'Joueur $i'],
+      ),
+    );
+    addTearDown(eight.dispose);
+    for (final size in const [Size(800, 600), Size(1280, 800)]) {
+      await pumpTable(tester, size, eight);
+      noOverflow(tester.takeException(), '8 liste $size');
+      expect(find.text('Mes PV'), findsWidgets);
+      expect(find.text('Reçu'), findsWidgets);
+      await pick('En cercle');
+      noOverflow(tester.takeException(), '8 cercle $size');
+      expect(find.text('Mes PV'), findsWidgets);
+      expect(find.text('Tous adv.'), findsWidgets);
+      expect(find.text('Reçu'), findsWidgets);
+      expect(find.text('−5'), findsWidgets);
+    }
+
+    final two = GameController(
+      game: Game.start(
+        playerCount: 2,
+        names: const ['Joueur 1', 'Joueur 2'],
+      ),
+    );
+    addTearDown(two.dispose);
+    await pumpTable(tester, const Size(800, 1200), two);
+    await pick('Comptes empilés');
+    noOverflow(tester.takeException(), 'duel empilé');
+    expect(find.text('Mes PV'), findsWidgets);
+    await pick('Façon téléphone');
+    noOverflow(tester.takeException(), 'duel téléphone');
   });
 
   testWidgets('un toucher sur le commandant inflige 1 et retire 1 vie', (

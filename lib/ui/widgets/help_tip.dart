@@ -31,6 +31,7 @@ class HelpTip extends StatefulWidget {
     this.title,
     this.showIcon = false,
     this.enabled = true,
+    this.longPress = true,
   });
 
   final String message;
@@ -38,6 +39,9 @@ class HelpTip extends StatefulWidget {
   final Widget child;
   final bool showIcon;
   final bool enabled;
+
+  /// Maintien = explication. Désactivé sur les boutons qui s’enchaînent au maintien.
+  final bool longPress;
 
   @override
   State<HelpTip> createState() => _HelpTipState();
@@ -253,17 +257,18 @@ class _HelpTipState extends State<HelpTip> {
       return widget.child;
     }
 
-    final help = GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onLongPress: () => _showHelp(context),
-      child: widget.child,
-    );
+    final help = widget.longPress
+        ? GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: () => _showHelp(context),
+            child: widget.child,
+          )
+        : widget.child;
 
     final screenWidth = MediaQuery.sizeOf(context).width;
     final turned = SeatReading.turnsOf(context) % 4 != 0;
-    final phone = screenWidth < 600;
     // Une bulle droite serait illisible pour le joueur d’en face ou de côté.
-    final tip = !phone && !turned
+    final tip = !turned
         ? Tooltip(
             key: _tooltipKey,
             message: widget.message,
@@ -281,20 +286,18 @@ class _HelpTipState extends State<HelpTip> {
               child: help,
             ),
           )
-        : turned
-        ? MouseRegion(
+        : MouseRegion(
             onEnter: (_) => _onHoverEnter(),
             onExit: (_) => _onHoverExit(),
             child: help,
-          )
-        : help;
+          );
 
     if (!widget.showIcon) return tip;
     return Row(
       children: [
         Flexible(child: tip),
         IconButton(
-          tooltip: phone || turned ? null : 'Explication',
+          tooltip: turned ? null : 'Explication',
           visualDensity: VisualDensity.compact,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),

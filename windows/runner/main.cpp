@@ -25,9 +25,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 720);
-  if (!window.Create(L"LifeStack", origin, size)) {
+  Win32Window::Point origin(40, 40);
+  // Taille téléphone : c’est l’écran sur lequel la table se joue.
+  Win32Window::Size size(420, 880);
+  if (!window.Create(L"LifeStack — test", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

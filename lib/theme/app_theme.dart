@@ -71,6 +71,16 @@ String playerInitial(String name) {
   return trimmed.substring(0, 1).toUpperCase();
 }
 
+/// « Joueur 3 » → « 3 », sinon la première lettre. Évite que tout le monde soit « J ».
+String playerTag(String name) {
+  final match = RegExp(
+    r'^joueur\s+(\d+)$',
+    caseSensitive: false,
+  ).firstMatch(name.trim());
+  if (match != null) return match.group(1)!;
+  return playerInitial(name);
+}
+
 ThemeData buildTheme() {
   const paper = Color(0xFFF3F6FA);
   final scheme = ColorScheme.fromSeed(

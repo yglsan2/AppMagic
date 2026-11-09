@@ -44,10 +44,20 @@ class TableScreen extends StatefulWidget {
   State<TableScreen> createState() => _TableScreenState();
 }
 
+enum _BoardLayout { auto, phone, stack, split }
+
+String _layoutName(_BoardLayout layout, int players) => switch (layout) {
+  _BoardLayout.phone => players >= 5 ? 'En cercle' : 'Façon téléphone',
+  _BoardLayout.stack => 'Comptes empilés',
+  _BoardLayout.split => '4 écrans',
+  _BoardLayout.auto => 'Automatique',
+};
+
 class _TableScreenState extends State<TableScreen> {
   Timer? _toastTimer;
   String? _toast;
   int _seenFlash = 0;
+  _BoardLayout _layout = _BoardLayout.auto;
 
   /// Siège affiché en mode Focus (indépendant du tour actif).
   String? _focusPlayerId;
@@ -65,6 +75,44 @@ class _TableScreenState extends State<TableScreen> {
       oldWidget.controller.removeListener(_onGame);
       widget.controller.addListener(_onGame);
     }
+  }
+
+  List<_BoardLayout> _layoutChoices(int players) {
+    if (players < 2) return const [];
+    if (players == 4) {
+      return const [
+        _BoardLayout.phone,
+        _BoardLayout.stack,
+        _BoardLayout.split,
+      ];
+    }
+    return const [_BoardLayout.phone, _BoardLayout.stack];
+  }
+
+  _BoardLayout _shownLayout(int players) {
+    if (_layout == _BoardLayout.split && players != 4) return _BoardLayout.phone;
+    if (_layout != _BoardLayout.auto) return _layout;
+    if (players >= 5 && players <= 8) return _BoardLayout.stack;
+    return _BoardLayout.phone;
+  }
+
+  void _setLayout(_BoardLayout layout) {
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(milliseconds: 2600), () {
+      if (mounted) setState(() => _toast = null);
+    });
+    setState(() {
+      _layout = layout;
+      _toast = switch (layout) {
+        _BoardLayout.phone =>
+          'Répartis autour de l’écran : chacun lit son côté.',
+        _BoardLayout.stack =>
+          'Comptes empilés, tous dans le même sens. Pratique sur un tactile ou un projecteur.',
+        _BoardLayout.split =>
+          'Quatre écrans, tous dans le même sens : haut gauche, haut droite, bas gauche, bas droite.',
+        _BoardLayout.auto => 'Disposition automatique.',
+      };
+    });
   }
 
   void _onGame() {
@@ -160,6 +208,8 @@ class _TableScreenState extends State<TableScreen> {
 
   @override
   Widget build(BuildContext context) {
+    widget.controller.rememberCommanderLog =
+        widget.settings.rememberCommanderLog;
     final game = widget.controller.game;
     return PopScope(
       canPop: false,
@@ -210,9 +260,10 @@ class _TableScreenState extends State<TableScreen> {
                               SnackBar(
                                 content: Text(
                                   tipsOn
-                                      ? 'Bulles d’aide activées — appui long '
-                                            'sur Monarque, poison…'
-                                      : 'Bulles d’aide désactivées',
+                                      ? 'Bulles d’aide activées. Survole ou '
+                                            'maintiens Mes PV, un adversaire '
+                                            'ou un commandant reçu.'
+                                      : 'Bulles d’aide désactivées.',
                                 ),
                                 duration: const Duration(seconds: 2),
                               ),
@@ -231,6 +282,12 @@ class _TableScreenState extends State<TableScreen> {
                               settings: widget.settings,
                               onChanged: widget.onSettings,
                             );
+                          case _Menu.layoutPhone:
+                            _setLayout(_BoardLayout.phone);
+                          case _Menu.layoutStack:
+                            _setLayout(_BoardLayout.stack);
+                          case _Menu.layoutSplit:
+                            _setLayout(_BoardLayout.split);
                           case _Menu.rotate:
                             widget.controller.rotateSeats();
                           case _Menu.shuffle:
@@ -250,6 +307,9 @@ class _TableScreenState extends State<TableScreen> {
                       showCardJournal: widget.settings.cardJournalAssist,
                       showTreachery: game.format == MatchFormat.treachery,
                       beginnerTips: widget.settings.beginnerTips,
+                      layouts: _layoutChoices(game.players.length),
+                      currentLayout: _shownLayout(game.players.length),
+                      onLayout: _setLayout,
                     ),
                     if (game.victoryBanner() != null)
                       _VictoryBanner(
@@ -268,21 +328,98 @@ class _TableScreenState extends State<TableScreen> {
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          final fourSides = useFourSides(
+                          final tablet = useFourSides(
                             width: constraints.maxWidth,
                             height: constraints.maxHeight,
                             players: game.players.length,
                           );
-                          final plan = planFor(
+                          final landscape = useLandscapeEdges(
+                            width: constraints.maxWidth,
+                            height: constraints.maxHeight,
                             players: game.players.length,
-                            fourSides: fourSides,
-                          ).oriented(game.seatShift, game.players.length);
+                          );
+                          final fourSides = tablet || landscape;
+                          final plan = (landscape
+                                  ? landscapePlan(game.players.length)
+                                  : planFor(
+                                      players: game.players.length,
+                                      fourSides: fourSides,
+                                    ))
+                              .oriented(game.seatShift, game.players.length);
                           final list = preferList(
                             mode: widget.settings.viewMode,
                             width: constraints.maxWidth,
                             height: constraints.maxHeight,
                             plan: plan,
                           );
+                          final explicitList =
+                              widget.settings.viewMode == ViewMode.list ||
+                              widget.settings.viewMode == ViewMode.focus;
+                          final count = game.players.length;
+                          final choice = _layout == _BoardLayout.split && count != 4
+                              ? _BoardLayout.phone
+                              : _layout;
+                          final forced = choice != _BoardLayout.auto;
+                          Widget stacked() => _HorizontalBands(
+                            plan: SeatingPlan(
+                              south: [for (var i = 0; i < count; i++) i],
+                              north: const [],
+                              fourSides: false,
+                            ).oriented(game.seatShift, count),
+                            controller: widget.controller,
+                            haptic: widget.settings.haptic,
+                            showTips: widget.settings.beginnerTips,
+                          );
+                          if (choice == _BoardLayout.split) {
+                            return _SplitQuarters(
+                              shift: game.seatShift,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          final autoStack = choice == _BoardLayout.auto &&
+                              count >= 5 &&
+                              count <= 8;
+                          if ((choice == _BoardLayout.stack || autoStack) &&
+                              count >= 2 &&
+                              count <= 8 &&
+                              (forced || !explicitList)) {
+                            return stacked();
+                          }
+                          if (choice == _BoardLayout.phone &&
+                              count >= 5 &&
+                              count <= 8) {
+                            return _FourSides(
+                              plan: pokerPlan(count).oriented(
+                                game.seatShift,
+                                count,
+                              ),
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          if (choice == _BoardLayout.phone && count <= 2) {
+                            return _TwoSides(
+                              plan: plan,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          if (!explicitList &&
+                              !fourSides &&
+                              count >= 3 &&
+                              count <= 4 &&
+                              choice != _BoardLayout.stack) {
+                            return _HorizontalBands(
+                              plan: plan,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
                           if (list) {
                             final focusMode =
                                 widget.settings.viewMode == ViewMode.focus;
@@ -365,6 +502,9 @@ enum _Menu {
   rotate,
   shuffle,
   treacheryDeal,
+  layoutPhone,
+  layoutStack,
+  layoutSplit,
   recap,
   rematch,
   reset,
@@ -455,6 +595,9 @@ class _Bar extends StatelessWidget {
     this.showCardJournal = true,
     this.showTreachery = false,
     this.beginnerTips = true,
+    this.layouts = const [],
+    this.currentLayout = _BoardLayout.auto,
+    this.onLayout,
   });
 
   final GameController controller;
@@ -469,6 +612,9 @@ class _Bar extends StatelessWidget {
   final bool showCardJournal;
   final bool showTreachery;
   final bool beginnerTips;
+  final List<_BoardLayout> layouts;
+  final _BoardLayout currentLayout;
+  final ValueChanged<_BoardLayout>? onLayout;
 
   @override
   Widget build(BuildContext context) {
@@ -517,6 +663,36 @@ class _Bar extends StatelessWidget {
             onPressed: onHistory,
           ),
           _BarIcon(icon: Icons.casino, tooltip: 'Dés', onPressed: onDice),
+          if (layouts.isNotEmpty)
+            PopupMenuButton<_BoardLayout>(
+              tooltip: 'Disposition de l’écran',
+              padding: EdgeInsets.zero,
+              onSelected: onLayout,
+              itemBuilder: (context) => [
+                for (final layout in layouts)
+                  PopupMenuItem(
+                    value: layout,
+                    child: Text(
+                      layout == currentLayout
+                          ? '${_layoutName(layout, controller.game.players.length)}  · actuel'
+                          : _layoutName(layout, controller.game.players.length),
+                    ),
+                  ),
+              ],
+              child: const SizedBox(
+                width: 44,
+                height: 44,
+                child: Icon(Icons.touch_app, size: 22),
+              ),
+            ),
+          _BarIcon(
+            icon: beginnerTips ? Icons.help : Icons.help_outline,
+            tooltip: beginnerTips
+                ? 'Désactiver les bulles d’aide'
+                : 'Activer les bulles d’aide',
+            onPressed: () => onMenu(_Menu.tips),
+            emphasize: beginnerTips,
+          ),
           PopupMenuButton<_Menu>(
             tooltip: 'Menu',
             padding: EdgeInsets.zero,
@@ -563,6 +739,19 @@ class _Bar extends StatelessWidget {
                 value: _Menu.settings,
                 child: Text('Réglages'),
               ),
+              for (final layout in layouts)
+                PopupMenuItem(
+                  value: switch (layout) {
+                    _BoardLayout.stack => _Menu.layoutStack,
+                    _BoardLayout.split => _Menu.layoutSplit,
+                    _ => _Menu.layoutPhone,
+                  },
+                  child: Text(
+                    layout == currentLayout
+                        ? '${_layoutName(layout, controller.game.players.length)}  · actuel'
+                        : _layoutName(layout, controller.game.players.length),
+                  ),
+                ),
               const PopupMenuItem(
                 value: _Menu.rotate,
                 child: Text('Tourner les places'),
@@ -697,9 +886,9 @@ class _BarIcon extends StatelessWidget {
     return IconButton(
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
-      constraints: BoxConstraints(
-        minWidth: emphasize ? 44 : 36,
-        minHeight: emphasize ? 44 : 36,
+      constraints: const BoxConstraints(
+        minWidth: 44,
+        minHeight: 44,
       ),
       padding: EdgeInsets.zero,
       onPressed: onPressed,
@@ -1334,6 +1523,122 @@ class _ListTable extends StatelessWidget {
   }
 }
 
+class _HorizontalBands extends StatelessWidget {
+  const _HorizontalBands({
+    required this.plan,
+    required this.controller,
+    required this.haptic,
+    required this.showTips,
+  });
+
+  final SeatingPlan plan;
+  final GameController controller;
+  final bool haptic;
+  final bool showTips;
+
+  @override
+  Widget build(BuildContext context) {
+    final seats = <(int, int)>[
+      for (final index in plan.north) (index, 2),
+      for (final index in plan.south) (index, 0),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Sur un grand écran, les bandes se partagent la hauteur : plus facile
+        // à toucher. Sinon chacune garde une taille confortable et on défile.
+        const fitMin = 176.0;
+        const comfort = 220.0;
+        final fill = seats.length < 5 ||
+            constraints.maxHeight >= fitMin * seats.length;
+        if (fill) {
+          return Column(
+            children: [
+              for (final seat in seats)
+                Expanded(child: _band(seat.$1, seat.$2)),
+            ],
+          );
+        }
+        return ListView(
+          children: [
+            for (final seat in seats)
+              SizedBox(height: comfort, child: _band(seat.$1, seat.$2)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _band(int index, int turns) {
+    final players = controller.game.players;
+    return _RotatedSeat(
+      quarterTurns: turns,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        child: PlayerPanel(
+          controller: controller,
+          playerId: players[index].id,
+          haptic: haptic,
+          showTips: showTips,
+          band: true,
+        ),
+      ),
+    );
+  }
+}
+
+class _SplitQuarters extends StatelessWidget {
+  const _SplitQuarters({
+    required this.shift,
+    required this.controller,
+    required this.haptic,
+    required this.showTips,
+  });
+
+  final int shift;
+  final GameController controller;
+  final bool haptic;
+  final bool showTips;
+
+  @override
+  Widget build(BuildContext context) {
+    final players = controller.game.players;
+    Widget cell(int slot) {
+      final index = (slot + shift) % players.length;
+      return Padding(
+        padding: const EdgeInsets.all(3),
+        child: PlayerPanel(
+          controller: controller,
+          playerId: players[index].id,
+          haptic: haptic,
+          showTips: showTips,
+          band: true,
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: cell(0)),
+              Expanded(child: cell(1)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: cell(2)),
+              Expanded(child: cell(3)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _TwoSides extends StatelessWidget {
   const _TwoSides({
     required this.plan,
@@ -1375,7 +1680,8 @@ class _TwoSides extends StatelessWidget {
 
   Widget _turned(int index, int turns) {
     final players = controller.game.players;
-    final face = facingSeatIndex(plan, index);
+    final multi = players.length >= 3;
+    final face = multi ? null : facingSeatIndex(plan, index);
     return _RotatedSeat(
       quarterTurns: turns,
       child: Padding(
@@ -1386,6 +1692,7 @@ class _TwoSides extends StatelessWidget {
           haptic: haptic,
           lifeTargetId: face == null ? null : players[face].id,
           showTips: showTips,
+          band: multi,
         ),
       ),
     );
@@ -1407,65 +1714,76 @@ class _FourSides extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // En paysage, la hauteur du milieu devient la largeur du joueur tourné.
+        // On la garde assez grande, et on élargit les colonnes pour sa hauteur.
+        final tight = constraints.maxHeight < 520;
+        final roomForCenter = (constraints.maxWidth - 88) / 2;
+        final side = (constraints.maxWidth * 0.3)
+            .clamp(72.0, roomForCenter > 72 ? roomForCenter : 72.0)
+            .clamp(72.0, 320.0);
+        return Column(
+          children: [
+            if (plan.north.isNotEmpty)
+              Expanded(
+                flex: tight ? 3 : 5,
+                child: Row(
+                  children: [
+                    for (final index in plan.north)
+                      Expanded(child: _seat(index, 2)),
+                  ],
+                ),
+              ),
+            Expanded(
+              flex: tight ? 10 : 6,
+              child: Row(
+                children: [
+                  if (tight)
+                    SizedBox(width: side, child: _sideColumn(plan.westTopToBottom, 1))
+                  else
+                    Expanded(flex: 5, child: _sideColumn(plan.westTopToBottom, 1)),
+                  const Expanded(
+                    flex: 3,
+                    child: Center(
+                      child: Text(
+                        'Sens horaire',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  if (tight)
+                    SizedBox(width: side, child: _sideColumn(plan.eastTopToBottom, 3))
+                  else
+                    Expanded(flex: 5, child: _sideColumn(plan.eastTopToBottom, 3)),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: tight ? 3 : 5,
+              child: Row(
+                children: [
+                  for (final index in plan.south)
+                    Expanded(child: _seat(index, 0)),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _sideColumn(List<int> indexes, int turns) {
     return Column(
       children: [
-        Expanded(
-          flex: 5,
-          child: Row(
-            children: [
-              for (final index in plan.north) Expanded(child: _seat(index, 2)),
-            ],
-          ),
-        ),
-        Expanded(
-          flex: 6,
-          child: Row(
-            children: [
-              Expanded(
-                flex: 5,
-                child: Column(
-                  children: [
-                    for (final index in plan.westTopToBottom)
-                      Expanded(child: _seat(index, 1)),
-                  ],
-                ),
-              ),
-              const Expanded(
-                flex: 3,
-                child: Center(
-                  child: Text(
-                    'Sens horaire',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 5,
-                child: Column(
-                  children: [
-                    for (final index in plan.eastTopToBottom)
-                      Expanded(child: _seat(index, 3)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          flex: 5,
-          child: Row(
-            children: [
-              for (final index in plan.south) Expanded(child: _seat(index, 0)),
-            ],
-          ),
-        ),
+        for (final index in indexes) Expanded(child: _seat(index, turns)),
       ],
     );
   }
 
   Widget _seat(int index, int turns) {
     final players = controller.game.players;
-    final face = facingSeatIndex(plan, index);
     return _RotatedSeat(
       quarterTurns: turns,
       child: Padding(
@@ -1474,8 +1792,8 @@ class _FourSides extends StatelessWidget {
           controller: controller,
           playerId: players[index].id,
           haptic: haptic,
-          lifeTargetId: face == null ? null : players[face].id,
           showTips: showTips,
+          band: true,
         ),
       ),
     );

@@ -63,6 +63,9 @@ class GameController extends ChangeNotifier {
   /// Historique des dégâts de commandant (plus récent en tête).
   final List<CmdDamageChange> cmdDamageLog = [];
 
+  /// Mémoire locale des coups de commandant. Les totaux du plateau restent suivis.
+  bool rememberCommanderLog = true;
+
   /// Lignes pour récap / bandeau (dérivées de [lifeLog]).
   List<String> get lifeFeed => [for (final e in lifeLog) e.line];
 
@@ -186,7 +189,7 @@ class GameController extends ChangeNotifier {
     int? lifeFrom,
     int? lifeTo,
   }) {
-    if (fromTaken == toTaken) return;
+    if (!rememberCommanderLog || fromTaken == toTaken) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final delta = toTaken - fromTaken;
     if (cmdDamageLog.isNotEmpty) {
@@ -371,6 +374,56 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  /// Un seul annuler pour plusieurs joueurs (tous les adversaires, zone…).
+  void addLifeMany(Iterable<String> playerIds, int delta) {
+    if (delta == 0) return;
+    final ids = <String>[];
+    for (final id in playerIds) {
+      if (game.indexOf(id) < 0 || ids.contains(id)) continue;
+      ids.add(id);
+    }
+    if (ids.isEmpty) return;
+    if (ids.length == 1) {
+      addLife(ids.first, delta);
+      return;
+    }
+
+    final plans = <({String id, int from, int to})>[];
+    for (final id in ids) {
+      final from = playerById(id).life;
+      final to = (from + delta).clamp(-99, 999);
+      if (to != from) plans.add((id: id, from: from, to: to));
+    }
+    if (plans.isEmpty) return;
+
+    final sign = delta > 0 ? '+$delta' : '$delta';
+    final everyone = ids.length == game.players.length;
+    final label = everyone
+        ? 'Tous $sign'
+        : '${plans.length} joueurs $sign';
+    _commit(label, () {
+      final teams = <int>{};
+      for (final plan in plans) {
+        final player = playerById(plan.id);
+        if (game.sharedLife) {
+          final team = game.indexOf(plan.id) ~/ 2;
+          if (!teams.add(team)) continue;
+          final now = player.life;
+          _setLife(player, (now + delta).clamp(-99, 999));
+        } else {
+          _setLife(player, plan.to);
+        }
+      }
+    });
+    for (final plan in plans) {
+      final player = playerById(plan.id);
+      _recordLife(player: player, from: plan.from, to: player.life);
+      if (plan.from > 0 && player.life <= 0) {
+        flash('${player.name} est à terre');
+      }
+    }
+  }
+
   /// Enregistre un événement de journal et applique les deltas confirmés.
   /// L’annulation (undo) recalcule l’état via le snapshot — journal corrigible.
   void commitJournalEvent(JournalEvent event) {
@@ -470,16 +523,87 @@ class GameController extends ChangeNotifier {
     required String commanderId,
     required int delta,
   }) {
+    addCommanderDamageMany(
+      defenderIds: [defenderId],
+      commanderId: commanderId,
+      delta: delta,
+    );
+  }
+
+  /// Même commandant, plusieurs adversaires, un seul annuler.
+  void addCommanderDamageMany({
+    required Iterable<String> defenderIds,
+    required String commanderId,
+    required int delta,
+  }) {
     if (!game.trackCommanderDamage || delta == 0) return;
-    final defender = playerById(defenderId);
     final found = findCommander(commanderId);
     if (found == null) return;
+    final plans = <_CmdPlan>[];
+    final seen = <String>{};
+    for (final id in defenderIds) {
+      if (!seen.add(id) || game.indexOf(id) < 0) continue;
+      if (id == found.owner.id) continue;
+      final plan = _planCommander(playerById(id), found, delta);
+      if (plan != null) plans.add(plan);
+    }
+    if (plans.isEmpty) return;
+    final source = plans.first.source;
+    final label = plans.length == 1
+        ? '${plans.first.defender.name} : ${plans.first.remaining} / '
+            '${game.commanderThreshold} face à $source'
+            ' · vie ${plans.first.lifeBefore} → ${plans.first.lifeAfter}'
+        : '$source · ${plans.length} adversaires '
+            '${delta > 0 ? '+$delta' : '$delta'}';
+    _commit(label, () {
+      for (final plan in plans) {
+        final defender = plan.defender;
+        defender.damageTaken[plan.commanderId] = plan.takenAfter;
+        if (plan.lifeDelta != 0) {
+          _setLife(
+            defender,
+            (defender.life + plan.lifeDelta).clamp(-99, 999),
+          );
+        }
+        defender.lifeDrainedByCommander[plan.commanderId] = plan.drainedNext;
+      }
+    });
+    for (final plan in plans) {
+      final defender = plan.defender;
+      final lifeMoved = plan.lifeBefore != defender.life;
+      _recordCmdDamage(
+        defender: defender,
+        commanderId: plan.commanderId,
+        commanderLabel: plan.source,
+        fromTaken: plan.takenBefore,
+        toTaken: plan.takenAfter,
+        lifeFrom: lifeMoved ? plan.lifeBefore : null,
+        lifeTo: lifeMoved ? defender.life : null,
+      );
+      if (lifeMoved) {
+        _recordLife(
+          player: defender,
+          from: plan.lifeBefore,
+          to: defender.life,
+          reason: plan.source,
+        );
+      }
+      if (plan.remaining == 0) {
+        flash('${defender.name} hors jeu · ${plan.source}');
+      } else if (game.lifeLethal(defender)) {
+        flash('${defender.name} est à terre');
+      }
+    }
+    final win = game.victoryBanner();
+    if (win != null) flash(win);
+  }
+
+  _CmdPlan? _planCommander(Player defender, FoundCommander found, int delta) {
+    final commanderId = found.commander.id;
     final current = defender.damageTaken[commanderId] ?? 0;
     final next = (current + delta).clamp(0, game.commanderThreshold);
     final applied = next - current;
-    if (applied == 0) return;
-    final source = commanderChipLabel(found.owner, found.commander);
-    final remaining = game.commanderThreshold - next;
+    if (applied == 0) return null;
     // Règle : dégâts de combat du commandant = aussi perte de PV (CR 120.3a).
     // En corrigeant, on ne rend que les PV réellement retirés par ce suivi.
     final drained = defender.lifeDrainedByCommander[commanderId] ?? 0;
@@ -493,47 +617,21 @@ class GameController extends ChangeNotifier {
     }
     final lifeBefore = defender.life;
     final lifeAfter = (lifeBefore + lifeDelta).clamp(-99, 999);
-    final takenBefore = current;
-    _commit(
-      '${defender.name} : $remaining / ${game.commanderThreshold} face à $source'
-      ' · vie $lifeBefore → $lifeAfter',
-      () {
-        defender.damageTaken[commanderId] = next;
-        if (lifeDelta != 0) {
-          _setLife(defender, lifeAfter);
-        }
-        if (applied > 0) {
-          defender.lifeDrainedByCommander[commanderId] = drained + applied;
-        } else {
-          defender.lifeDrainedByCommander[commanderId] =
-              (drained - lifeDelta).clamp(0, 99);
-        }
-      },
-    );
-    _recordCmdDamage(
+    final drainedNext = applied > 0
+        ? drained + applied
+        : (drained - lifeDelta).clamp(0, 99);
+    return _CmdPlan(
       defender: defender,
       commanderId: commanderId,
-      commanderLabel: source,
-      fromTaken: takenBefore,
-      toTaken: next,
-      lifeFrom: lifeDelta != 0 ? lifeBefore : null,
-      lifeTo: lifeDelta != 0 ? lifeAfter : null,
+      source: commanderChipLabel(found.owner, found.commander),
+      takenBefore: current,
+      takenAfter: next,
+      lifeBefore: lifeBefore,
+      lifeAfter: lifeAfter,
+      lifeDelta: lifeDelta,
+      remaining: game.commanderThreshold - next,
+      drainedNext: drainedNext,
     );
-    if (lifeDelta != 0) {
-      _recordLife(
-        player: defender,
-        from: lifeBefore,
-        to: lifeAfter,
-        reason: source,
-      );
-    }
-    if (remaining == 0) {
-      flash('${defender.name} hors jeu · $source');
-    } else if (game.lifeLethal(defender)) {
-      flash('${defender.name} est à terre');
-    }
-    final win = game.victoryBanner();
-    if (win != null) flash(win);
   }
 
   void addPlayer({String? name}) {
@@ -1356,4 +1454,30 @@ class GameController extends ChangeNotifier {
     }
     return controller;
   }
+}
+
+class _CmdPlan {
+  const _CmdPlan({
+    required this.defender,
+    required this.commanderId,
+    required this.source,
+    required this.takenBefore,
+    required this.takenAfter,
+    required this.lifeBefore,
+    required this.lifeAfter,
+    required this.lifeDelta,
+    required this.remaining,
+    required this.drainedNext,
+  });
+
+  final Player defender;
+  final String commanderId;
+  final String source;
+  final int takenBefore;
+  final int takenAfter;
+  final int lifeBefore;
+  final int lifeAfter;
+  final int lifeDelta;
+  final int remaining;
+  final int drainedNext;
 }

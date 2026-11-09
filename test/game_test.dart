@@ -396,6 +396,22 @@ void main() {
     expect(six.north, [2, 3]);
     expect(six.eastTopToBottom, [4]);
 
+    final poker7 = pokerPlan(7);
+    expect(poker7.westTopToBottom, hasLength(1));
+    expect(poker7.eastTopToBottom, hasLength(1));
+    expect(poker7.south.length + poker7.north.length, 5);
+
+    final poker8 = pokerPlan(8);
+    expect(poker8.westTopToBottom, hasLength(1));
+    expect(poker8.eastTopToBottom, hasLength(1));
+    expect(
+      poker8.south.length +
+          poker8.north.length +
+          poker8.westTopToBottom.length +
+          poker8.eastTopToBottom.length,
+      8,
+    );
+
     final eight = tabletPlan(8);
     expect(eight.south, [0, 7]);
     expect(eight.westTopToBottom, [2, 1]);
@@ -405,6 +421,36 @@ void main() {
     final duel = phonePlan(2);
     expect(facingSeatIndex(duel, 0), 1);
     expect(facingSeatIndex(duel, 1), 0);
+  });
+
+  test('plusieurs cibles perdent les mêmes points en un seul annuler', () {
+    final game = pod();
+    final ids = game.game.players.map((player) => player.id).toList();
+    game.addLifeMany(ids.skip(1), -2);
+    expect(game.playerById(ids[0]).life, 40);
+    expect(game.playerById(ids[1]).life, 38);
+    expect(game.playerById(ids[2]).life, 38);
+    expect(game.playerById(ids[3]).life, 38);
+    game.addLifeMany(ids, -3);
+    expect(game.playerById(ids[0]).life, 37);
+    expect(game.playerById(ids[1]).life, 35);
+    game.undo();
+    expect(game.playerById(ids[0]).life, 40);
+    expect(game.playerById(ids[1]).life, 38);
+
+    final commander = game.game.players[0].commanders.first;
+    game.addCommanderDamageMany(
+      defenderIds: ids.skip(1),
+      commanderId: commander.id,
+      delta: 2,
+    );
+    expect(game.playerById(ids[1]).life, 36);
+    expect(game.playerById(ids[1]).damageTaken[commander.id], 2);
+    expect(game.playerById(ids[2]).damageTaken[commander.id], 2);
+    expect(game.playerById(ids[0]).damageTaken[commander.id] ?? 0, 0);
+    game.undo();
+    expect(game.playerById(ids[1]).life, 38);
+    expect(game.playerById(ids[1]).damageTaken[commander.id] ?? 0, 0);
   });
 
   test('le chronomètre reste éteint tant qu’on ne l’active pas', () {

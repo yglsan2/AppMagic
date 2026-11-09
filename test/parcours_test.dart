@@ -50,7 +50,7 @@ void main() {
     await tester.tap(find.text('Passer'));
     await _until(tester, find.text('Fin de tour'));
 
-    expect(find.text('À toi de jouer'), findsOneWidget);
+    expect(find.text('À toi de jouer'), findsNothing);
 
     expect(find.text('40'), findsWidgets);
     await tester.ensureVisible(find.text('−').first);

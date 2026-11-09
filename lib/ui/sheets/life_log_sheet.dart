@@ -290,6 +290,10 @@ class _CmdEntries extends StatelessWidget {
                   entry.lifeFrom != null && entry.lifeTo != null
                   ? ' · PV ${entry.lifeFrom}→${entry.lifeTo}'
                   : '';
+              final remain = (game.commanderThreshold - entry.toTaken).clamp(
+                0,
+                game.commanderThreshold,
+              );
               return _LogTile(
                 avatarColor: owner == null
                     ? Colors.white24
@@ -298,6 +302,7 @@ class _CmdEntries extends StatelessWidget {
                 title: entry.summary,
                 subtitle:
                     'Manche ${entry.roundNumber} · tour ${entry.turnCount}'
+                    ' · pris ${entry.toTaken} · reste $remain'
                     '$lifeBit',
                 trailing: entry.deltaLabel,
                 trailingColor: tint,

@@ -89,6 +89,68 @@ bool useFourSides({
   return players >= 4 && width >= 720 && height >= 520;
 }
 
+/// Téléphone à l’horizontale : un joueur par bord, y compris les deux côtés.
+bool useLandscapeEdges({
+  required double width,
+  required double height,
+  required int players,
+}) {
+  return players >= 3 &&
+      players <= 4 &&
+      width > height &&
+      width >= 520 &&
+      height < 520;
+}
+
+/// 3 joueurs : bas, gauche, droite. 4 joueurs : un par bord.
+SeatingPlan landscapePlan(int count) {
+  if (count == 3) {
+    return const SeatingPlan(
+      south: [0],
+      north: [],
+      westTopToBottom: [1],
+      eastTopToBottom: [2],
+      fourSides: true,
+    );
+  }
+  if (count == 4) return tabletPlan(4);
+  return phonePlan(count);
+}
+
+/// Table type poker : un seul joueur à gauche et à droite (ils sont tournés),
+/// les autres en haut et en bas, dans le sens de celui qui est assis là.
+SeatingPlan pokerPlan(int count) {
+  if (count < 5) return tabletPlan(count);
+  const westCount = 1;
+  const eastCount = 1;
+  final rest = count - westCount - eastCount;
+  final southCount = (rest + 1) ~/ 2;
+  final northCount = rest - southCount;
+  var cursor = 0;
+  int take() => cursor++;
+  final southLeft = take();
+  final westSouthToNorth = [for (var i = 0; i < westCount; i++) take()];
+  final northLeftToRight = [for (var i = 0; i < northCount; i++) take()];
+  final eastNorthToSouth = [for (var i = 0; i < eastCount; i++) take()];
+  final southFromEast = [for (var i = 0; i < southCount - 1; i++) take()];
+  return SeatingPlan(
+    south: [southLeft, ...southFromEast.reversed],
+    north: northLeftToRight,
+    westTopToBottom: westSouthToNorth.reversed.toList(),
+    eastTopToBottom: eastNorthToSouth,
+    fourSides: true,
+  );
+}
+
+/// Fenêtre assez grande pour une table lue de chaque côté (TV, moniteur).
+bool usePokerTable({
+  required double width,
+  required double height,
+  required int players,
+}) {
+  return players >= 5 && players <= 8 && width >= 1000 && height >= 680;
+}
+
 SeatingPlan planFor({required int players, required bool fourSides}) {
   final plan = fourSides ? tabletPlan(players) : phonePlan(players);
   return plan;

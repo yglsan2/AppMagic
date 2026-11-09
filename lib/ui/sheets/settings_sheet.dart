@@ -85,8 +85,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Bulles d’aide'),
           subtitle: const Text(
-            'Survol ou appui long sur Monarque, Initiative, poison… '
-            'Utile pour les débutants — désactivez quand vous maîtrisez.',
+            'Éteintes, la table reste nette. Allume-les pour un débutant : '
+            'le survol ou un maintien explique Mes PV, les adversaires '
+            'et les commandants. Le bouton ? en haut de la table fait pareil.',
           ),
           value: _settings.beginnerTips,
           onChanged: (value) =>
@@ -101,6 +102,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
           value: _settings.showLifeFeed,
           onChanged: (value) =>
               _update(_settings.copyWith(showLifeFeed: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Mémoire des commandants'),
+          subtitle: const Text(
+            'Garde sur cet appareil chaque coup de commandant. '
+            'Touchez un commandant reçu pour voir les points pris '
+            'et ce qu’il reste avant la défaite.',
+          ),
+          value: _settings.rememberCommanderLog,
+          onChanged: (value) =>
+              _update(_settings.copyWith(rememberCommanderLog: value)),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
