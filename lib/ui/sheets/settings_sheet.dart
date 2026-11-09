@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/models.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 
 Future<void> showSettingsSheet(
   BuildContext context, {
@@ -40,6 +41,16 @@ class _SettingsSheetState extends State<SettingsSheet> {
     widget.onChanged(next);
   }
 
+  Widget _help(String title, String message, Widget child) {
+    return HelpTip(
+      enabled: _settings.beginnerTips,
+      showIcon: _settings.beginnerTips,
+      title: title,
+      message: message,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -59,21 +70,31 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'retirés reviennent.',
           ),
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Vider le mana en fin de tour'),
-          value: _settings.resetManaOnTurn,
-          onChanged: (value) =>
-              _update(_settings.copyWith(resetManaOnTurn: value)),
-        ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text(
-            'Remettre la tempête (storm) à zéro en fin de tour',
+        _help(
+          'Mana en fin de tour',
+          'Le mana flottant disparaît à l’étape de nettoyage. Activé, '
+              'Fin de tour remet à zéro le mana du joueur qui vient de jouer.',
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Vider le mana en fin de tour'),
+            value: _settings.resetManaOnTurn,
+            onChanged: (value) =>
+                _update(_settings.copyWith(resetManaOnTurn: value)),
           ),
-          value: _settings.resetStormOnTurn,
-          onChanged: (value) =>
-              _update(_settings.copyWith(resetStormOnTurn: value)),
+        ),
+        _help(
+          'Tempête',
+          'Le compteur de tempête de chaque joueur note ses sorts ce tour-ci. '
+              'Activé, il revient à zéro quand ce joueur termine son tour.',
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Remettre la tempête à zéro en fin de tour',
+            ),
+            value: _settings.resetStormOnTurn,
+            onChanged: (value) =>
+                _update(_settings.copyWith(resetStormOnTurn: value)),
+          ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -85,9 +106,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Bulles d’aide'),
           subtitle: const Text(
-            'Éteintes, la table reste nette. Allume-les pour un débutant : '
-            'le survol ou un maintien explique Mes PV, les adversaires '
-            'et les commandants. Le bouton ? en haut de la table fait pareil.',
+            'Éteintes, la table reste nette. Allumées, un maintien ou le i '
+            'explique chaque option : vies, commandants, poison, monarque, '
+            'mana, et le reste. Le bouton ? en haut de la table fait pareil.',
           ),
           value: _settings.beginnerTips,
           onChanged: (value) =>
@@ -103,6 +124,59 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (value) =>
               _update(_settings.copyWith(showLifeFeed: value)),
         ),
+        const Text(
+          'Affichage des points',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Choix du téléphone, pour chaque joueur sans préférence à lui. '
+          'Mes pertes, les deux (mixte), ou les pertes des adversaires. '
+          'L’œil d’un profil, ou un pseudo enregistré plus bas, remplace ce choix.',
+        ),
+        const SizedBox(height: 8),
+        SegmentedButton<ScorePane>(
+          expandedInsets: EdgeInsets.zero,
+          segments: const [
+            ButtonSegment(value: ScorePane.own, label: Text('Mes pertes')),
+            ButtonSegment(value: ScorePane.both, label: Text('Les deux')),
+            ButtonSegment(
+              value: ScorePane.foes,
+              label: Text('Adversaires'),
+            ),
+          ],
+          selected: {_settings.scorePane},
+          onSelectionChanged: (selection) =>
+              _update(_settings.copyWith(scorePane: selection.first)),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Préférences par pseudo',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _settings.namedPanes.isEmpty
+              ? 'Aucune préférence enregistrée. Ces joueurs suivent '
+                  'l’affichage du téléphone. Sur un profil, l’œil '
+                  'à côté de la roue crantée peut en choisir un autre, '
+                  'puis « Enregistrer pour ce pseudo ».'
+              : 'Au prochain passage de ce pseudo, son affichage remplace '
+                  'celui du téléphone. On peut toujours le changer '
+                  'pendant la partie.',
+        ),
+        for (final entry in _settings.namedPanes.entries)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(entry.key),
+            subtitle: Text(scorePaneLabel(entry.value)),
+            trailing: IconButton(
+              tooltip: 'Oublier ${entry.key}',
+              onPressed: () => _update(_settings.forgettingPane(entry.key)),
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ),
+        const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Mémoire des commandants'),
@@ -160,19 +234,31 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         ),
         const SizedBox(height: 12),
-        _StepperTile(
-          label: 'Seuil de commandant (officiel : 21)',
-          value: _settings.commanderThreshold,
-          onChanged: (value) =>
-              _update(_settings.copyWith(commanderThreshold: value)),
+        _help(
+          'Seuil de commandant',
+          'Vingt-et-un points de dégâts de combat du même commandant '
+              'éliminent. − et + changent ce seuil pour la partie. '
+              'Le Duel Commander ne compte pas cette règle.',
+          _StepperTile(
+            label: 'Seuil de commandant (officiel : 21)',
+            value: _settings.commanderThreshold,
+            onChanged: (value) =>
+                _update(_settings.copyWith(commanderThreshold: value)),
+          ),
         ),
-        _StepperTile(
+        _help(
+          'Seuil de poison',
+          'Dix marqueurs poison font perdre. En Géant à deux têtes, '
+              'laisser 10 ici applique le seuil officiel de 15. '
+              'Un autre nombre est respecté tel quel.',
+          _StepperTile(
           label: 'Seuil de poison',
           value: _settings.poisonThreshold,
           min: 1,
           max: 20,
           onChanged: (value) =>
               _update(_settings.copyWith(poisonThreshold: value)),
+        ),
         ),
         const SizedBox(height: 8),
         SwitchListTile(

@@ -11,6 +11,7 @@ class HandicapPicker extends StatelessWidget {
     required this.baseLife,
     required this.onChanged,
     this.compact = false,
+    this.tips = false,
   });
 
   final DeckBracket bracket;
@@ -18,6 +19,7 @@ class HandicapPicker extends StatelessWidget {
   final int baseLife;
   final void Function(DeckBracket bracket, int lifeDelta) onChanged;
   final bool compact;
+  final bool tips;
 
   int get _start => effectiveStartingLife(
     baseLife: baseLife,
@@ -70,6 +72,7 @@ class HandicapPicker extends StatelessWidget {
               children: [
                 for (final b in DeckBracket.values)
                   HelpTip(
+                    enabled: tips,
                     title: b.label,
                     message: b.help,
                     child: FilterChip(

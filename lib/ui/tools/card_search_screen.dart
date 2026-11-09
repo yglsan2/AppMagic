@@ -261,7 +261,7 @@ class _CardSearchScreenState extends State<CardSearchScreen> {
                 _Memo(
                   title: 'Fin de tour',
                   body:
-                      'Quand vous passez au joueur suivant, le mana flottant et le storm de celui qui vient de jouer reviennent à zéro. C’est un réglage, désactivable.',
+                      'Quand vous passez au joueur suivant, le mana flottant et la tempête de celui qui vient de jouer reviennent à zéro. C’est un réglage, désactivable.',
                 ),
               ],
             ),

@@ -32,6 +32,34 @@ class FoundCommander {
   final Commander commander;
 }
 
+/// Couronne qui vient de changer. L’affichage débutant s’en sert un court instant.
+class CrownChange {
+  const CrownChange({
+    required this.id,
+    required this.lostId,
+    required this.gainedId,
+  });
+
+  final int id;
+  final String? lostId;
+  final String gainedId;
+}
+
+/// Le monarque a perdu des points : était-ce une blessure de combat ?
+class CombatAsk {
+  const CombatAsk({
+    required this.id,
+    required this.monarchId,
+    required this.attackerId,
+  });
+
+  final int id;
+  final String monarchId;
+
+  /// Null : on ne sait pas qui a frappé (le joueur retire ses propres points).
+  final String? attackerId;
+}
+
 class GameController extends ChangeNotifier {
   GameController({
     required this.game,
@@ -57,6 +85,12 @@ class GameController extends ChangeNotifier {
   String lastLabel = '';
   int flashId = 0;
   String flashText = '';
+  CrownChange? crownChange;
+  DateTime? crownAt;
+  CombatAsk? combatAsk;
+  int _crownSeq = 0;
+  int _askSeq = 0;
+  int? _combatDeclinedTurn;
   /// Historique complet des PV depuis le début (plus récent en tête).
   final List<LifeChange> lifeLog = [];
 
@@ -308,6 +342,8 @@ class GameController extends ChangeNotifier {
       }
       lastLabel = 'Annulé · ${trail.label}';
     }
+    crownChange = null;
+    combatAsk = null;
     turnStarted = DateTime.now();
     notifyListeners();
     onChanged?.call();
@@ -319,6 +355,8 @@ class GameController extends ChangeNotifier {
     undoStack.add(Trail(trail.label, game.toJson()));
     game = Game.fromJson(trail.before);
     lastLabel = trail.label;
+    crownChange = null;
+    combatAsk = null;
     turnStarted = DateTime.now();
     notifyListeners();
     onChanged?.call();
@@ -356,26 +394,159 @@ class GameController extends ChangeNotifier {
     return names.join(' & ');
   }
 
-  void addLife(String playerId, int delta) {
+  /// Joueur encore en jeu, autre que [leavingId].
+  bool _canWearCrown(Player player, String leavingId) {
+    return player.id != leavingId && !game.isDefeated(player);
+  }
+
+  /// Le monarque quitte : le joueur actif, sinon le suivant dans l’ordre du tour.
+  String? _crownHeir(String leavingId) {
+    if (game.players.isEmpty) return null;
+    final active = game.players[game.activeIndex];
+    if (_canWearCrown(active, leavingId)) return active.id;
+    var index = game.activeIndex;
+    for (var n = 0; n < game.players.length; n++) {
+      index = (index + 1) % game.players.length;
+      if (_canWearCrown(game.players[index], leavingId)) {
+        return game.players[index].id;
+      }
+    }
+    return null;
+  }
+
+  /// Si le monarque n’est plus à la table, la couronne passe. Renvoie l’ancien.
+  String? _rehomeCrown() {
+    final id = game.monarchId;
+    if (id == null) return null;
+    final index = game.players.indexWhere((player) => player.id == id);
+    final gone = index < 0 || game.isDefeated(game.players[index]);
+    if (!gone) return null;
+    game.monarchId = _crownHeir(id);
+    return id;
+  }
+
+  /// Même passage que la couronne : le joueur actif, sinon le suivant.
+  String? _rehomeInitiative() {
+    final id = game.initiativeId;
+    if (id == null) return null;
+    final index = game.players.indexWhere((player) => player.id == id);
+    final gone = index < 0 || game.isDefeated(game.players[index]);
+    if (!gone) return null;
+    game.initiativeId = _crownHeir(id);
+    return id;
+  }
+
+  void _giveInitiative(String fromId, String toId) {
+    if (game.initiativeId != fromId || toId == fromId) return;
+    final index = game.players.indexWhere((player) => player.id == toId);
+    if (index < 0 || game.isDefeated(game.players[index])) return;
+    game.initiativeId = toId;
+  }
+
+  void _noteInitiative(String? before, {required String? monarchBefore}) {
+    final now = game.initiativeId;
+    if (now == before || game.monarchId != monarchBefore) return;
+    if (now == null) {
+      flash("Plus d'initiative");
+      return;
+    }
+    flash('${playerById(now).name} prend l’initiative');
+  }
+
+  void _noteCrown(String? before, {String? lostName}) {
+    final now = game.monarchId;
+    if (now == before) return;
+    combatAsk = null;
+    if (now == null) {
+      flash('Plus de monarque');
+      crownChange = null;
+      return;
+    }
+    final gained = playerById(now).name;
+    String? lost = lostName;
+    if (lost == null && before != null) {
+      final index = game.players.indexWhere((player) => player.id == before);
+      if (index >= 0) lost = game.players[index].name;
+    }
+    crownAt = DateTime.now();
+    crownChange = CrownChange(
+      id: ++_crownSeq,
+      lostId: before,
+      gainedId: now,
+    );
+    flash(
+      lost == null
+          ? '$gained est monarque'
+          : '$lost perd la couronne. $gained est monarque.',
+    );
+  }
+
+  void _offerCombat({required String defenderId, String? dealtBy}) {
+    if (game.monarchId != defenderId) return;
+    if (_combatDeclinedTurn == game.turnCount) return;
+    if (combatAsk != null) return;
+    final attacker = dealtBy != null && dealtBy != defenderId ? dealtBy : null;
+    combatAsk = CombatAsk(
+      id: ++_askSeq,
+      monarchId: defenderId,
+      attackerId: attacker,
+    );
+    notifyListeners();
+  }
+
+  /// [attackerId] null : ce n’était pas une blessure de combat.
+  void answerCombat(String? attackerId) {
+    final ask = combatAsk;
+    combatAsk = null;
+    if (ask == null || game.monarchId != ask.monarchId) {
+      notifyListeners();
+      return;
+    }
+    if (attackerId == null || attackerId == ask.monarchId) {
+      _combatDeclinedTurn = game.turnCount;
+      notifyListeners();
+      return;
+    }
+    final before = game.monarchId;
+    final initiativeBefore = game.initiativeId;
+    final name = playerById(attackerId).name;
+    final lostName = playerById(ask.monarchId).name;
+    _commit('$name prend la couronne', () {
+      game.monarchId = attackerId;
+      _giveInitiative(ask.monarchId, attackerId);
+    });
+    _noteCrown(before, lostName: lostName);
+    _noteInitiative(initiativeBefore, monarchBefore: before);
+  }
+
+  void addLife(String playerId, int delta, {String? dealtBy}) {
     if (delta == 0) return;
     final player = playerById(playerId);
     final before = player.life;
     final next = (before + delta).clamp(-99, 999);
     if (next == before) return;
     final wasAlive = !game.lifeLethal(player);
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
     final label =
         '${_groupLabel(player)} $before → $next (${next > before ? '+' : ''}${next - before})';
     _commit(label, () {
       _setLife(player, next);
+      _rehomeCrown();
+      _rehomeInitiative();
     });
     _recordLife(player: player, from: before, to: next);
+    _noteCrown(monarchBefore);
+    _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
     if (wasAlive && next <= 0) {
       flash('${player.name} est à terre');
+    } else if (next < before && game.monarchId == player.id) {
+      _offerCombat(defenderId: player.id, dealtBy: dealtBy);
     }
   }
 
   /// Un seul annuler pour plusieurs joueurs (tous les adversaires, zone…).
-  void addLifeMany(Iterable<String> playerIds, int delta) {
+  void addLifeMany(Iterable<String> playerIds, int delta, {String? dealtBy}) {
     if (delta == 0) return;
     final ids = <String>[];
     for (final id in playerIds) {
@@ -384,7 +555,7 @@ class GameController extends ChangeNotifier {
     }
     if (ids.isEmpty) return;
     if (ids.length == 1) {
-      addLife(ids.first, delta);
+      addLife(ids.first, delta, dealtBy: dealtBy);
       return;
     }
 
@@ -401,6 +572,11 @@ class GameController extends ChangeNotifier {
     final label = everyone
         ? 'Tous $sign'
         : '${plans.length} joueurs $sign';
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
+    final monarchDropped =
+        monarchBefore != null &&
+        plans.any((plan) => plan.id == monarchBefore && plan.to < plan.from);
     _commit(label, () {
       final teams = <int>{};
       for (final plan in plans) {
@@ -414,13 +590,20 @@ class GameController extends ChangeNotifier {
           _setLife(player, plan.to);
         }
       }
+      _rehomeCrown();
+      _rehomeInitiative();
     });
+    _noteCrown(monarchBefore);
+    _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
     for (final plan in plans) {
       final player = playerById(plan.id);
       _recordLife(player: player, from: plan.from, to: player.life);
       if (plan.from > 0 && player.life <= 0) {
         flash('${player.name} est à terre');
       }
+    }
+    if (monarchDropped && game.monarchId == monarchBefore) {
+      _offerCombat(defenderId: monarchBefore!, dealtBy: dealtBy);
     }
   }
 
@@ -549,6 +732,8 @@ class GameController extends ChangeNotifier {
     }
     if (plans.isEmpty) return;
     final source = plans.first.source;
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
     final label = plans.length == 1
         ? '${plans.first.defender.name} : ${plans.first.remaining} / '
             '${game.commanderThreshold} face à $source'
@@ -567,7 +752,29 @@ class GameController extends ChangeNotifier {
         }
         defender.lifeDrainedByCommander[plan.commanderId] = plan.drainedNext;
       }
+      if (delta > 0 &&
+          monarchBefore != null &&
+          found.owner.id != monarchBefore &&
+          plans.any(
+            (plan) =>
+                plan.defender.id == monarchBefore &&
+                plan.takenAfter > plan.takenBefore,
+          ) &&
+          !game.isDefeated(found.owner)) {
+        game.monarchId = found.owner.id;
+      }
+      if (delta > 0 && !game.isDefeated(found.owner)) {
+        for (final plan in plans) {
+          if (plan.takenAfter > plan.takenBefore) {
+            _giveInitiative(plan.defender.id, found.owner.id);
+          }
+        }
+      }
+      _rehomeCrown();
+      _rehomeInitiative();
     });
+    _noteCrown(monarchBefore);
+    _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
     for (final plan in plans) {
       final defender = plan.defender;
       final lifeMoved = plan.lifeBefore != defender.life;
@@ -722,6 +929,12 @@ class GameController extends ChangeNotifier {
     if (game.sharedLife && game.players.length <= 2) return;
     final player = playerById(playerId);
     final index = game.indexOf(playerId);
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
+    final heir = monarchBefore == playerId ? _crownHeir(playerId) : null;
+    final initiativeHeir = initiativeBefore == playerId
+        ? _crownHeir(playerId)
+        : null;
     _commit('${player.name} quitte la table', () {
       final commanderIds = [for (final c in player.commanders) c.id];
       game.players.removeAt(index);
@@ -730,8 +943,8 @@ class GameController extends ChangeNotifier {
           other.damageTaken.remove(id);
         }
       }
-      if (game.monarchId == playerId) game.monarchId = null;
-      if (game.initiativeId == playerId) game.initiativeId = null;
+      if (monarchBefore == playerId) game.monarchId = heir;
+      if (initiativeBefore == playerId) game.initiativeId = initiativeHeir;
       if (game.archenemyId == playerId) {
         game.archenemyId = game.players.isEmpty ? null : game.players.first.id;
       }
@@ -744,6 +957,10 @@ class GameController extends ChangeNotifier {
         game.seatShift %= game.players.length;
       }
     });
+    if (monarchBefore == playerId) {
+      _noteCrown(monarchBefore, lostName: player.name);
+    }
+    _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
   }
 
   void setPlayerCount(int count) {
@@ -752,6 +969,8 @@ class GameController extends ChangeNotifier {
     if (game.sharedLife && target.isOdd) target += 1;
     target = target.clamp(minPlayers, 8);
     if (target == game.players.length) return;
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
     _commit('$target joueurs à table', () {
       while (game.players.length < target) {
         final index = game.players.length;
@@ -771,15 +990,22 @@ class GameController extends ChangeNotifier {
         game.players.add(newbie);
       }
       while (game.players.length > target) {
-        final player = game.players.removeLast();
+        final player = game.players.last;
+        final heir = game.monarchId == player.id ? _crownHeir(player.id) : null;
+        final initiativeHeir = game.initiativeId == player.id
+            ? _crownHeir(player.id)
+            : null;
+        game.players.removeLast();
         final commanderIds = [for (final c in player.commanders) c.id];
         for (final other in game.players) {
           for (final id in commanderIds) {
             other.damageTaken.remove(id);
           }
         }
-        if (game.monarchId == player.id) game.monarchId = null;
-        if (game.initiativeId == player.id) game.initiativeId = null;
+        if (game.monarchId == player.id) game.monarchId = heir;
+        if (initiativeHeir != null || game.initiativeId == player.id) {
+          game.initiativeId = initiativeHeir;
+        }
         if (game.archenemyId == player.id) {
           game.archenemyId = game.players.isEmpty
               ? null
@@ -791,6 +1017,8 @@ class GameController extends ChangeNotifier {
         game.seatShift %= game.players.length;
       }
     });
+    _noteCrown(monarchBefore);
+    _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
   }
 
   void setCommanderDamage({
@@ -921,12 +1149,26 @@ class GameController extends ChangeNotifier {
     if (delta == 0) return;
     final player = playerById(playerId);
     final current = player.readStat(stat);
-    final max = stat == Stat.poison || stat == Stat.signature ? 30 : 99;
+    final max = switch (stat) {
+      Stat.poison || Stat.signature => 30,
+      Stat.speed => 4,
+      _ => 99,
+    };
     final next = (current + delta).clamp(0, max);
     if (next == current) return;
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
     _commit('${player.name} · ${statLabel(stat)} $current → $next', () {
       player.writeStat(stat, next);
+      if (stat == Stat.poison) {
+        _rehomeCrown();
+        _rehomeInitiative();
+      }
     });
+    if (stat == Stat.poison) {
+      _noteCrown(monarchBefore, lostName: player.name);
+      _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
+    }
   }
 
   void bumpMana(String playerId, String color, int delta) {
@@ -997,11 +1239,15 @@ class GameController extends ChangeNotifier {
 
   void toggleMonarch(String playerId) {
     final player = playerById(playerId);
-    if (game.monarchId == playerId) {
+    final before = game.monarchId;
+    if (before == playerId) {
       _commit('Plus de monarque', () => game.monarchId = null);
-    } else {
-      _commit('Monarque : ${player.name}', () => game.monarchId = playerId);
+      crownChange = null;
+      combatAsk = null;
+      return;
     }
+    _commit('Monarque : ${player.name}', () => game.monarchId = playerId);
+    _noteCrown(before);
   }
 
   void toggleInitiative(String playerId) {
@@ -1029,10 +1275,22 @@ class GameController extends ChangeNotifier {
   void setConceded(String playerId, bool value) {
     final player = playerById(playerId);
     if (player.conceded == value) return;
+    final monarchBefore = game.monarchId;
+    final initiativeBefore = game.initiativeId;
     _commit(
       value ? '${player.name} quitte la partie' : '${player.name} revient',
-      () => player.conceded = value,
+      () {
+        player.conceded = value;
+        if (value) {
+          _rehomeCrown();
+          _rehomeInitiative();
+        }
+      },
     );
+    if (value) {
+      _noteCrown(monarchBefore, lostName: player.name);
+      _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
+    }
   }
 
   void revivePlayer(String playerId) {
@@ -1089,6 +1347,7 @@ class GameController extends ChangeNotifier {
     } while (game.players[next].conceded && guard < game.players.length);
     final wrapped = next <= game.activeIndex;
     final incoming = game.players[next];
+    combatAsk = null;
     _commit(
       wrapped
           ? 'Manche ${game.roundNumber + 1} · ${incoming.name}'
@@ -1235,8 +1494,14 @@ class GameController extends ChangeNotifier {
     });
   }
 
-  void setArchenemy(String playerId) {
+  void setArchenemy(String? playerId) {
+    if (playerId == null) {
+      if (game.archenemyId == null) return;
+      _commit('Plus d’archennemi', () => game.archenemyId = null);
+      return;
+    }
     final player = playerById(playerId);
+    if (game.archenemyId == playerId) return;
     _commit('Archenemy : ${player.name}', () => game.archenemyId = playerId);
   }
 
@@ -1320,11 +1585,12 @@ class GameController extends ChangeNotifier {
   }
 
   void applyRules(AppSettings settings) {
+    final poison = poisonThresholdFor(game.format, settings.poisonThreshold);
     final same =
         game.resetManaOnTurn == settings.resetManaOnTurn &&
         game.resetStormOnTurn == settings.resetStormOnTurn &&
         game.commanderThreshold == settings.commanderThreshold &&
-        game.poisonThreshold == settings.poisonThreshold &&
+        game.poisonThreshold == poison &&
         game.turnAlertSeconds == settings.turnAlertSeconds &&
         game.timerMode == settings.timerMode &&
         game.timersEnabled == settings.timersEnabled &&
@@ -1336,7 +1602,7 @@ class GameController extends ChangeNotifier {
       game.resetManaOnTurn = settings.resetManaOnTurn;
       game.resetStormOnTurn = settings.resetStormOnTurn;
       game.commanderThreshold = settings.commanderThreshold.clamp(1, 99);
-      game.poisonThreshold = settings.poisonThreshold.clamp(1, 30);
+      game.poisonThreshold = poison;
       game.turnAlertSeconds = settings.turnAlertSeconds.clamp(0, 3600);
       game.timerMode = settings.timerMode;
       game.timersEnabled = settings.timersEnabled;

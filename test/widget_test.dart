@@ -4,8 +4,45 @@ import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/setup/setup_screen.dart';
+import 'package:mtg_table/ui/sheets/settings_sheet.dart';
 import 'package:mtg_table/ui/table/table_screen.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
+import 'package:mtg_table/ui/widgets/player_panel.dart';
+
+class _HoldSettings extends StatefulWidget {
+  const _HoldSettings({
+    super.key,
+    required this.controller,
+    required this.settings,
+  });
+
+  final GameController controller;
+  final AppSettings settings;
+
+  @override
+  State<_HoldSettings> createState() => _HoldSettingsState();
+}
+
+class _HoldSettingsState extends State<_HoldSettings> {
+  late AppSettings _settings = widget.settings;
+
+  @override
+  void didUpdateWidget(covariant _HoldSettings oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.settings != widget.settings) _settings = widget.settings;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TableScreen(
+      controller: widget.controller,
+      settings: _settings,
+      onSettings: (next) => setState(() => _settings = next),
+      onLeave: () {},
+      onCoachDismissed: () {},
+    );
+  }
+}
 
 void main() {
   GameController sample() {
@@ -29,6 +66,8 @@ void main() {
     GameController controller, {
     ViewMode mode = ViewMode.auto,
     bool coach = false,
+    bool selfScoring = false,
+    bool tips = false,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -36,19 +75,18 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       MaterialApp(
-        home: TableScreen(
+        home: _HoldSettings(
           key: ValueKey(
-            '${size.width}x${size.height}x${controller.game.players.length}',
+            '${size.width}x${size.height}x${controller.game.players.length}x$selfScoring',
           ),
           controller: controller,
           settings: AppSettings.defaults.copyWith(
             haptic: false,
             viewMode: mode,
             coachSeen: !coach,
+            beginnerTips: tips,
+            scorePane: selfScoring ? ScorePane.own : ScorePane.foes,
           ),
-          onSettings: (_) {},
-          onLeave: () {},
-          onCoachDismissed: () {},
         ),
       ),
     );
@@ -100,7 +138,7 @@ void main() {
       }
       expect(find.text('Mes PV'), findsWidgets);
       expect(find.text('Tous adv.'), findsWidgets);
-      expect(find.text('Reçu'), findsWidgets);
+      expect(find.text('Infligé'), findsWidgets);
       expect(find.text('−5'), findsWidgets);
       expect(find.text('+5'), findsWidgets);
       }
@@ -152,12 +190,12 @@ void main() {
       await pumpTable(tester, size, eight);
       noOverflow(tester.takeException(), '8 liste $size');
       expect(find.text('Mes PV'), findsWidgets);
-      expect(find.text('Reçu'), findsWidgets);
+      expect(find.text('Infligé'), findsWidgets);
       await pick('En cercle');
       noOverflow(tester.takeException(), '8 cercle $size');
       expect(find.text('Mes PV'), findsWidgets);
       expect(find.text('Tous adv.'), findsWidgets);
-      expect(find.text('Reçu'), findsWidgets);
+      expect(find.text('Infligé'), findsWidgets);
       expect(find.text('−5'), findsWidgets);
     }
 
@@ -530,5 +568,216 @@ void main() {
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('l’aide débutant explique le poison dans la roue crantée', (
+    tester,
+  ) async {
+    final controller = sample();
+    addTearDown(controller.dispose);
+    await pumpTable(tester, const Size(800, 800), controller, tips: true);
+    await tester.tap(find.byIcon(Icons.settings).first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ce n’est pas une perte de vie'), findsOneWidget);
+    expect(find.byIcon(Icons.info_outline), findsWidgets);
+    await tester.tap(find.byIcon(Icons.info_outline).first);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Relancer ce commandant'), findsOneWidget);
+    expect(find.text('Compris'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('le monarque confirme sa pioche avant de passer', (tester) async {
+    final controller = sample();
+    addTearDown(controller.dispose);
+    final active = controller.game.players[controller.game.activeIndex];
+    controller.toggleMonarch(active.id);
+    await pumpTable(tester, const Size(800, 800), controller);
+    await tester.tap(find.text('Fin de tour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Étape de fin'), findsOneWidget);
+    expect(controller.game.activeIndex, 0);
+    await tester.tap(find.text('Pas encore'));
+    await tester.pumpAndSettle();
+    expect(controller.game.activeIndex, 0);
+    await tester.tap(find.text('Fin de tour'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Oui, carte piochée'));
+    await tester.pumpAndSettle();
+    expect(controller.game.activeIndex, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chacun retire ses propres points', (tester) async {
+    Future<void> check(GameController controller, Size size) async {
+      await pumpTable(
+        tester,
+        size,
+        controller,
+        selfScoring: true,
+      );
+      expect(find.text('Tous adv.'), findsNothing);
+      expect(find.text('Choisis un joueur'), findsNothing);
+      expect(find.text('Fin de tour'), findsOneWidget);
+      final players = controller.game.players;
+      for (final seat in players) {
+        for (final other in players) {
+          final key = ValueKey('life-pad-${seat.id}-${other.id}');
+          expect(
+            find.byKey(key),
+            seat.id == other.id ? findsWidgets : findsNothing,
+          );
+        }
+      }
+      final before = [
+        for (final player in controller.game.players) player.life,
+      ];
+      await tester.tap(find.text('−').first);
+      await tester.pump();
+      final after = [
+        for (final player in controller.game.players) player.life,
+      ];
+      final changed = [
+        for (var i = 0; i < before.length; i++)
+          if (after[i] != before[i]) i,
+      ];
+      expect(changed, hasLength(1));
+      expect(after[changed.single], before[changed.single] - 1);
+      expect(tester.takeException(), isNull);
+    }
+
+    await check(sample(), const Size(360, 800));
+    await check(
+      GameController(game: Game.start(playerCount: 2, names: const ['Ana', 'Bo'])),
+      const Size(400, 800),
+    );
+  });
+
+  testWidgets('les options choisies restent en Mes pertes', (tester) async {
+    for (final count in [2, 4, 8]) {
+      final controller = GameController(
+        game: Game.start(playerCount: count),
+      );
+      addTearDown(controller.dispose);
+      final first = controller.game.players.first;
+      controller.toggleMonarch(first.id);
+      controller.bumpStat(first.id, Stat.poison, 3);
+      controller.bumpStat(first.id, Stat.energy, 2);
+      controller.bumpMana(first.id, 'U', 4);
+      controller.addCustom(first.id, 'Indices');
+      final counter = controller.playerById(first.id).custom.first;
+      controller.bumpCustom(first.id, counter.id, 2);
+      await pumpTable(
+        tester,
+        const Size(360, 800),
+        controller,
+        selfScoring: true,
+      );
+      final panel = find.ancestor(
+        of: find.byKey(ValueKey('pane-${first.id}')),
+        matching: find.byType(PlayerPanel),
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Monarque')),
+        findsWidgets,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('☠ 3')),
+        findsWidgets,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Énergie 2')),
+        findsWidgets,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('U 4')),
+        findsWidgets,
+      );
+      expect(
+        find.descendant(of: panel, matching: find.text('Indices 2')),
+        findsWidgets,
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('chaque profil choisit son affichage', (tester) async {
+    final controller = sample();
+    addTearDown(controller.dispose);
+    await pumpTable(tester, const Size(1280, 800), controller);
+    final ana = controller.game.players.first;
+    final bo = controller.game.players[1];
+    Finder panel(String id) => find.ancestor(
+      of: find.byKey(ValueKey('pane-$id')),
+      matching: find.byType(PlayerPanel),
+    );
+
+    await tester.tap(find.byKey(ValueKey('pane-${ana.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('Enregistrer pour Ana'), findsOneWidget);
+    await tester.tap(find.text('Mes pertes'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 2700));
+
+    expect(
+      find.descendant(of: panel(ana.id), matching: find.text('Reçu')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(of: panel(ana.id), matching: find.text('Infligé')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: panel(bo.id), matching: find.text('Infligé')),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(of: panel(bo.id), matching: find.text('Reçu')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(ValueKey('pane-${ana.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enregistrer pour Ana'));
+    await tester.pump();
+    expect(find.textContaining('Préférence enregistrée pour Ana'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('l’affichage du téléphone se règle et reste remplaçable', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    AppSettings current = AppSettings.defaults;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(),
+        home: Scaffold(
+          body: SettingsSheet(
+            settings: current,
+            onChanged: (next) => current = next,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      find.text('Mes pertes'),
+      120,
+      scrollable: find.byType(Scrollable),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Mes pertes'));
+    await tester.pump();
+    expect(current.scorePane, ScorePane.own);
+    expect(current.paneNamed('Yann'), ScorePane.own);
+    current = current.savingPane('Yann', ScorePane.foes);
+    expect(current.paneNamed('Yann'), ScorePane.foes);
+    expect(current.paneNamed('Bo'), ScorePane.own);
   });
 }

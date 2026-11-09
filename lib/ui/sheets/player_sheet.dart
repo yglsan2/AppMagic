@@ -8,8 +8,9 @@ import 'package:mtg_table/ui/widgets/name_dialog.dart';
 Future<void> showPlayerSheet(
   BuildContext context,
   GameController controller,
-  String playerId,
-) {
+  String playerId, {
+  bool tips = false,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -20,7 +21,11 @@ Future<void> showPlayerSheet(
         ),
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.78,
-          child: PlayerSheet(controller: controller, playerId: playerId),
+          child: PlayerSheet(
+            controller: controller,
+            playerId: playerId,
+            tips: tips,
+          ),
         ),
       );
     },
@@ -32,10 +37,12 @@ class PlayerSheet extends StatelessWidget {
     super.key,
     required this.controller,
     required this.playerId,
+    this.tips = false,
   });
 
   final GameController controller;
   final String playerId;
+  final bool tips;
 
   String _clockLabel(int ms) {
     final total = (ms / 1000).floor().clamp(0, 99 * 3600);
@@ -243,6 +250,7 @@ class PlayerSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       HandicapPicker(
+                        tips: tips,
                         bracket: player.deckBracket,
                         lifeDelta: player.handicapLifeDelta,
                         baseLife: game.startingLife,
@@ -271,7 +279,7 @@ class PlayerSheet extends StatelessWidget {
                       title: const Text('Archennemi (Archenemy)'),
                       value: game.archenemyId == player.id,
                       onChanged: (value) {
-                        if (value) controller.setArchenemy(playerId);
+                        controller.setArchenemy(value ? playerId : null);
                       },
                     ),
                   if (game.format == MatchFormat.treachery &&

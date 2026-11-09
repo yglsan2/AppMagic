@@ -17,6 +17,7 @@ import 'package:mtg_table/ui/sheets/recap_sheet.dart';
 import 'package:mtg_table/ui/sheets/transfer_sheet.dart';
 import 'package:mtg_table/ui/tools/card_search_screen.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
+import 'package:mtg_table/ui/help/option_help.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
 import 'package:mtg_table/ui/widgets/player_panel.dart';
 
@@ -53,10 +54,76 @@ String _layoutName(_BoardLayout layout, int players) => switch (layout) {
   _BoardLayout.auto => 'Automatique',
 };
 
+class _CombatCrownAsk extends StatelessWidget {
+  const _CombatCrownAsk({required this.controller});
+
+  final GameController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final ask = controller.combatAsk;
+    if (ask == null) return const SizedBox.shrink();
+    final monarch = controller.playerById(ask.monarchId);
+    final attacker = ask.attackerId == null
+        ? null
+        : controller.playerById(ask.attackerId!);
+    final opponents = [
+      for (final player in controller.game.players)
+        if (player.id != monarch.id && !controller.game.isDefeated(player))
+          player,
+    ];
+    return Material(
+      elevation: 8,
+      color: const Color(0xFF2A2418),
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              attacker == null
+                  ? '${monarch.name} perd des points. Une créature adverse '
+                        'a-t-elle infligé une blessure de combat ?'
+                  : '${attacker.name} retire des points à ${monarch.name}. '
+                        'C’est une blessure de combat ?',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (attacker != null)
+                  FilledButton(
+                    onPressed: () => controller.answerCombat(attacker.id),
+                    child: Text('${attacker.name} prend la couronne'),
+                  )
+                else
+                  for (final player in opponents)
+                    FilledButton(
+                      onPressed: () => controller.answerCombat(player.id),
+                      child: Text(player.name),
+                    ),
+                TextButton(
+                  onPressed: () => controller.answerCombat(null),
+                  child: const Text('Pas du combat'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TableScreenState extends State<TableScreen> {
   Timer? _toastTimer;
   String? _toast;
   int _seenFlash = 0;
+  int _seenCrown = 0;
   _BoardLayout _layout = _BoardLayout.auto;
 
   /// Siège affiché en mode Focus (indépendant du tour actif).
@@ -117,6 +184,31 @@ class _TableScreenState extends State<TableScreen> {
 
   void _onGame() {
     if (!mounted) return;
+    final crown = widget.controller.crownChange;
+    final fresh = crown != null &&
+        widget.controller.crownAt != null &&
+        DateTime.now().difference(widget.controller.crownAt!) <
+            const Duration(seconds: 5);
+    if (widget.settings.beginnerTips && fresh && crown.id != _seenCrown) {
+      _seenCrown = crown.id;
+      _seenFlash = widget.controller.flashId;
+      final name = widget.controller.playerById(crown.gainedId).name;
+      _toastTimer?.cancel();
+      _toastTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted) setState(() => _toast = null);
+      });
+      setState(() {
+        _toast = '$name, vous êtes maintenant monarque. '
+            'Pensez à piocher une carte au début de votre étape de fin. '
+            'Personne n’est indétrônable !';
+      });
+      return;
+    }
+    if (widget.settings.beginnerTips && fresh && crown.id == _seenCrown) {
+      _seenFlash = widget.controller.flashId;
+      setState(() {});
+      return;
+    }
     final id = widget.controller.flashId;
     if (id != _seenFlash) {
       _seenFlash = id;
@@ -127,6 +219,40 @@ class _TableScreenState extends State<TableScreen> {
       });
     }
     setState(() {});
+  }
+
+  final Map<String, ScorePane> _sessionPane = {};
+
+  Map<String, ScorePane> _panes() {
+    return {
+      for (final player in widget.controller.game.players)
+        player.id:
+            _sessionPane[player.id] ?? widget.settings.paneNamed(player.name),
+    };
+  }
+
+  void _toastPane(String text) {
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(milliseconds: 2600), () {
+      if (mounted) setState(() => _toast = null);
+    });
+    setState(() => _toast = text);
+  }
+
+  void _choosePane(String playerId, ScorePane pane) {
+    final player = widget.controller.game.playerById(playerId);
+    setState(() => _sessionPane[playerId] = pane);
+    _toastPane('${player.name} : ${scorePaneLabel(pane)}');
+  }
+
+  void _savePane(String playerId) {
+    final player = widget.controller.game.playerById(playerId);
+    final pane = _sessionPane[playerId] ?? widget.settings.paneNamed(player.name);
+    widget.onSettings(widget.settings.savingPane(player.name, pane));
+    setState(() => _sessionPane[playerId] = pane);
+    _toastPane(
+      'Préférence enregistrée pour ${player.name} : ${scorePaneLabel(pane)}.',
+    );
   }
 
   @override
@@ -221,7 +347,11 @@ class _TableScreenState extends State<TableScreen> {
         body: DecoratedBox(
           decoration: const BoxDecoration(gradient: pageGradient),
           child: SafeArea(
-            child: Stack(
+            child: SeatPanes(
+              byId: _panes(),
+              onChoose: _choosePane,
+              onSave: _savePane,
+              child: Stack(
               children: [
                 Column(
                   children: [
@@ -324,7 +454,10 @@ class _TableScreenState extends State<TableScreen> {
                       _LifeFeedStrip(controller: widget.controller),
                     if (game.timersEnabled)
                       _TurnTimerBar(controller: widget.controller),
-                    _TableExtras(controller: widget.controller),
+                    _TableExtras(
+                      controller: widget.controller,
+                      showTips: widget.settings.beginnerTips,
+                    ),
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
@@ -457,11 +590,18 @@ class _TableScreenState extends State<TableScreen> {
                     ),
                   ],
                 ),
+                if (widget.controller.combatAsk != null)
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    bottom: 12,
+                    child: _CombatCrownAsk(controller: widget.controller),
+                  ),
                 if (_toast != null)
                   Positioned(
                     left: 16,
                     right: 16,
-                    top: 64,
+                    top: 112,
                     child: Material(
                       elevation: 8,
                       color: accent,
@@ -481,6 +621,7 @@ class _TableScreenState extends State<TableScreen> {
                     ),
                   ),
               ],
+            ),
             ),
           ),
         ),
@@ -626,6 +767,7 @@ class _Bar extends StatelessWidget {
           _BarIcon(
             icon: Icons.arrow_back,
             tooltip: 'Salon',
+            help: beginnerTips ? tipSalon : null,
             onPressed: onLeave,
           ),
           Expanded(
@@ -649,22 +791,35 @@ class _Bar extends StatelessWidget {
           _BarIcon(
             icon: Icons.undo,
             tooltip: 'Annuler',
+            help: beginnerTips ? tipUndo : null,
             onPressed: canUndo ? onUndo : null,
             emphasize: true,
           ),
           _BarIcon(
             icon: Icons.redo,
             tooltip: 'Rétablir',
+            help: beginnerTips ? tipRedo : null,
             onPressed: canRedo ? onRedo : null,
           ),
           _BarIcon(
             icon: Icons.history,
             tooltip: 'Historique',
+            help: beginnerTips ? tipHistory : null,
             onPressed: onHistory,
           ),
-          _BarIcon(icon: Icons.casino, tooltip: 'Dés', onPressed: onDice),
+          _BarIcon(
+            icon: Icons.casino,
+            tooltip: 'Dés',
+            help: beginnerTips ? tipDice : null,
+            onPressed: onDice,
+          ),
           if (layouts.isNotEmpty)
-            PopupMenuButton<_BoardLayout>(
+            HelpTip(
+              enabled: beginnerTips,
+              longPress: false,
+              title: tipLayout.title,
+              message: tipLayout.message,
+              child: PopupMenuButton<_BoardLayout>(
               tooltip: 'Disposition de l’écran',
               padding: EdgeInsets.zero,
               onSelected: onLayout,
@@ -685,6 +840,7 @@ class _Bar extends StatelessWidget {
                 child: Icon(Icons.touch_app, size: 22),
               ),
             ),
+            ),
           _BarIcon(
             icon: beginnerTips ? Icons.help : Icons.help_outline,
             tooltip: beginnerTips
@@ -693,7 +849,12 @@ class _Bar extends StatelessWidget {
             onPressed: () => onMenu(_Menu.tips),
             emphasize: beginnerTips,
           ),
-          PopupMenuButton<_Menu>(
+          HelpTip(
+            enabled: beginnerTips,
+            longPress: false,
+            title: tipMenu.title,
+            message: tipMenu.message,
+            child: PopupMenuButton<_Menu>(
             tooltip: 'Menu',
             padding: EdgeInsets.zero,
             onSelected: onMenu,
@@ -779,6 +940,7 @@ class _Bar extends StatelessWidget {
               ),
               const PopupMenuItem(value: _Menu.about, child: Text('À propos')),
             ],
+          ),
           ),
         ],
       ),
@@ -873,17 +1035,19 @@ class _BarIcon extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.emphasize = false,
+    this.help,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
   final bool emphasize;
+  final OptionTip? help;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
-    return IconButton(
+    final button = IconButton(
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
       constraints: const BoxConstraints(
@@ -897,6 +1061,14 @@ class _BarIcon extends StatelessWidget {
         size: emphasize ? 28 : 22,
         color: emphasize && enabled ? accentGold : null,
       ),
+    );
+    final tip = help;
+    if (tip == null) return button;
+    return HelpTip(
+      title: tip.title,
+      message: tip.message,
+      longPress: false,
+      child: button,
     );
   }
 }
@@ -1085,9 +1257,10 @@ enum _ExtraKind { plane, scheme, bounty }
 
 /// Plans / schémas / primes : chips repliables pour garder le pad de vie grand.
 class _TableExtras extends StatefulWidget {
-  const _TableExtras({required this.controller});
+  const _TableExtras({required this.controller, required this.showTips});
 
   final GameController controller;
+  final bool showTips;
 
   @override
   State<_TableExtras> createState() => _TableExtrasState();
@@ -1129,31 +1302,46 @@ class _TableExtrasState extends State<_TableExtras> {
             child: Row(
               children: [
                 if (hasPlane)
-                  _ExtraChip(
+                  HelpTip(
+                    enabled: widget.showTips,
+                    title: tipPlane.title,
+                    message: tipPlane.message,
+                    child: _ExtraChip(
                     selected: effectiveOpen == _ExtraKind.plane,
                     icon: Icons.public,
                     color: const Color(0xFF7EB6FF),
                     label: game.currentPlane,
                     onTap: () => _toggle(_ExtraKind.plane),
                   ),
+                  ),
                 if (hasScheme) ...[
                   if (hasPlane) const SizedBox(width: 6),
-                  _ExtraChip(
+                  HelpTip(
+                    enabled: widget.showTips,
+                    title: tipScheme.title,
+                    message: tipScheme.message,
+                    child: _ExtraChip(
                     selected: effectiveOpen == _ExtraKind.scheme,
                     icon: Icons.whatshot,
                     color: const Color(0xFFFF7A6E),
                     label: game.currentScheme,
                     onTap: () => _toggle(_ExtraKind.scheme),
                   ),
+                  ),
                 ],
                 if (hasBounty) ...[
                   if (hasPlane || hasScheme) const SizedBox(width: 6),
-                  _ExtraChip(
+                  HelpTip(
+                    enabled: widget.showTips,
+                    title: tipBounty.title,
+                    message: tipBounty.message,
+                    child: _ExtraChip(
                     selected: effectiveOpen == _ExtraKind.bounty,
                     icon: Icons.military_tech,
                     color: accentGold,
                     label: 'Prime ${game.bountyLevel + 1}',
                     onTap: () => _toggle(_ExtraKind.bounty),
+                  ),
                   ),
                 ],
               ],
@@ -1505,7 +1693,14 @@ class _ListTable extends StatelessWidget {
     return ListView.builder(
       itemCount: players.length,
       itemBuilder: (context, index) {
-        return SizedBox(height: each, child: _seat(players[index].id));
+        final player = players[index];
+        final pane = SeatPanes.paneOf(context, player.id);
+        final extra = seatOptionsExtent(
+          controller.game,
+          player,
+          full: pane != ScorePane.foes,
+        );
+        return SizedBox(height: each + extra, child: _seat(player.id));
       },
     );
   }
@@ -1546,22 +1741,38 @@ class _HorizontalBands extends StatelessWidget {
       builder: (context, constraints) {
         // Sur un grand écran, les bandes se partagent la hauteur : plus facile
         // à toucher. Sinon chacune garde une taille confortable et on défile.
-        const fitMin = 176.0;
-        const comfort = 220.0;
-        final fill = seats.length < 5 ||
-            constraints.maxHeight >= fitMin * seats.length;
+        final players = controller.game.players;
+        double comfortOf(int index) => switch (SeatPanes.paneOf(
+          context,
+          players[index].id,
+        )) {
+          ScorePane.both => 452.0,
+          ScorePane.own => 360.0,
+          ScorePane.foes => 220.0,
+        };
+        final need = seats.fold<double>(
+          0,
+          (sum, seat) => sum + comfortOf(seat.$1),
+        );
+        final fill = seats.length < 5 || constraints.maxHeight >= need;
         if (fill) {
           return Column(
             children: [
               for (final seat in seats)
-                Expanded(child: _band(seat.$1, seat.$2)),
+                Expanded(
+                  flex: comfortOf(seat.$1).round(),
+                  child: _band(seat.$1, seat.$2),
+                ),
             ],
           );
         }
         return ListView(
           children: [
             for (final seat in seats)
-              SizedBox(height: comfort, child: _band(seat.$1, seat.$2)),
+              SizedBox(
+                height: comfortOf(seat.$1),
+                child: _band(seat.$1, seat.$2),
+              ),
           ],
         );
       },
@@ -1661,7 +1872,7 @@ class _TwoSides extends StatelessWidget {
             child: Row(
               children: [
                 for (final index in plan.north)
-                  Expanded(child: _turned(index, 2)),
+                  Expanded(child: _turned(context, index, 2)),
               ],
             ),
           ),
@@ -1670,7 +1881,7 @@ class _TwoSides extends StatelessWidget {
             child: Row(
               children: [
                 for (final index in plan.south)
-                  Expanded(child: _turned(index, 0)),
+                  Expanded(child: _turned(context, index, 0)),
               ],
             ),
           ),
@@ -1678,10 +1889,14 @@ class _TwoSides extends StatelessWidget {
     );
   }
 
-  Widget _turned(int index, int turns) {
+  Widget _turned(BuildContext context, int index, int turns) {
     final players = controller.game.players;
     final multi = players.length >= 3;
-    final face = multi ? null : facingSeatIndex(plan, index);
+    final face =
+        multi ||
+            SeatPanes.paneOf(context, players[index].id) == ScorePane.own
+        ? null
+        : facingSeatIndex(plan, index);
     return _RotatedSeat(
       quarterTurns: turns,
       child: Padding(

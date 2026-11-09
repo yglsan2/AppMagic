@@ -19,6 +19,20 @@ enum DayState { unset, day, night }
 
 enum ViewMode { auto, table, list, focus }
 
+/// Quelle partie du profil est ouverte.
+/// [own] : mes pertes et les commandants reçus.
+/// [foes] : points et commandants infligés aux adversaires.
+/// [both] : les deux, rien n’est rangé.
+enum ScorePane { own, both, foes }
+
+String scorePaneLabel(ScorePane pane) => switch (pane) {
+  ScorePane.own => 'Mes pertes',
+  ScorePane.both => 'Les deux',
+  ScorePane.foes => 'Adversaires',
+};
+
+String playerNameKey(String name) => name.trim().toLowerCase();
+
 /// Mode de chronométrage.
 enum TimerMode {
   /// Compteur de tour simple + alerte (turnAlertSeconds).
@@ -28,6 +42,19 @@ enum TimerMode {
 }
 
 enum Stat { poison, energy, experience, rad, speed, treasure, storm, signature }
+
+/// Du plus suivi au plus rare. Tout est encore dans les règles
+/// (septembre 2026) : rien de cette liste n’a été retiré.
+const statPlayOrder = <Stat>[
+  Stat.poison,
+  Stat.treasure,
+  Stat.energy,
+  Stat.experience,
+  Stat.storm,
+  Stat.rad,
+  Stat.speed,
+  Stat.signature,
+];
 
 const manaKeys = ['W', 'U', 'B', 'R', 'G', 'C'];
 
@@ -180,9 +207,9 @@ const formatCatalog = <FormatInfo>[
     detail: '30 PV partagés · équipes de 2',
     help:
         'Deux équipes de deux. Chaque équipe a un seul total de points '
-        'de vie, ici 30. Les dégâts de commandant restent comptés pour '
-        'chaque joueur. Les bonus de deck sont coupés, parce que la vie '
-        'est commune.',
+        'de vie, ici 30. Quinze marqueurs poison font perdre, pas dix. '
+        'Les dégâts de commandant restent comptés pour chaque joueur. '
+        'Les bonus de deck sont coupés, parce que la vie est commune.',
     startingLife: 30,
     commanderDamage: true,
     commanderTax: true,
@@ -222,6 +249,14 @@ const formatCatalog = <FormatInfo>[
 
 FormatInfo formatInfo(MatchFormat format) {
   return formatCatalog.firstWhere((info) => info.format == format);
+}
+
+/// 10 par défaut. En Géant à deux têtes, ce 10 officiel n’existe pas :
+/// le seuil est 15, sauf si la table a choisi un autre nombre.
+int poisonThresholdFor(MatchFormat format, int configured) {
+  final value = configured.clamp(1, 30);
+  if (format == MatchFormat.twoHeaded && value == 10) return 15;
+  return value;
 }
 
 int _idSeq = 0;
@@ -952,7 +987,7 @@ String statLabel(Stat stat) {
     Stat.rad => 'Radiation',
     Stat.speed => 'Vitesse',
     Stat.treasure => 'Trésors',
-    Stat.storm => 'Storm (enchaînement)',
+    Stat.storm => 'Tempête',
     Stat.signature => 'Sort signature',
   };
 }
@@ -1115,6 +1150,22 @@ class CmdDamageChange {
   }
 }
 
+Map<String, ScorePane> _namedPanes(Object? raw) {
+  if (raw is! Map) return const {};
+  final panes = <String, ScorePane>{};
+  for (final entry in raw.entries) {
+    final name = '${entry.key}'.trim();
+    if (name.isEmpty) continue;
+    for (final pane in ScorePane.values) {
+      if (pane.name == entry.value) {
+        panes[name] = pane;
+        break;
+      }
+    }
+  }
+  return panes;
+}
+
 class AppSettings {
   const AppSettings({
     required this.haptic,
@@ -1133,6 +1184,8 @@ class AppSettings {
     required this.cardJournalAssist,
     required this.handicapsEnabled,
     required this.beginnerTips,
+    required this.scorePane,
+    required this.namedPanes,
   });
 
   static const defaults = AppSettings(
@@ -1152,6 +1205,8 @@ class AppSettings {
     cardJournalAssist: true,
     handicapsEnabled: false,
     beginnerTips: false,
+    scorePane: ScorePane.foes,
+    namedPanes: {},
   );
 
   final bool haptic;
@@ -1176,6 +1231,43 @@ class AppSettings {
   final bool handicapsEnabled;
   /// Bulles d’aide (appui long / survol) sur Monarque, poison, etc.
   final bool beginnerTips;
+  /// Affichage quand le pseudo n’a pas de préférence enregistrée.
+  final ScorePane scorePane;
+
+  /// Affichage retenu par pseudo, d’une partie à l’autre.
+  final Map<String, ScorePane> namedPanes;
+
+  ScorePane paneNamed(String name) {
+    final key = playerNameKey(name);
+    if (key.isEmpty) return scorePane;
+    for (final entry in namedPanes.entries) {
+      if (playerNameKey(entry.key) == key) return entry.value;
+    }
+    return scorePane;
+  }
+
+  AppSettings savingPane(String name, ScorePane pane) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return this;
+    final next = <String, ScorePane>{};
+    for (final entry in namedPanes.entries) {
+      if (playerNameKey(entry.key) != playerNameKey(trimmed)) {
+        next[entry.key] = entry.value;
+      }
+    }
+    next[trimmed] = pane;
+    return copyWith(namedPanes: next);
+  }
+
+  AppSettings forgettingPane(String name) {
+    final next = <String, ScorePane>{};
+    for (final entry in namedPanes.entries) {
+      if (playerNameKey(entry.key) != playerNameKey(name)) {
+        next[entry.key] = entry.value;
+      }
+    }
+    return copyWith(namedPanes: next);
+  }
 
   AppSettings copyWith({
     bool? haptic,
@@ -1194,6 +1286,8 @@ class AppSettings {
     bool? cardJournalAssist,
     bool? handicapsEnabled,
     bool? beginnerTips,
+    ScorePane? scorePane,
+    Map<String, ScorePane>? namedPanes,
   }) {
     return AppSettings(
       haptic: haptic ?? this.haptic,
@@ -1213,6 +1307,8 @@ class AppSettings {
       cardJournalAssist: cardJournalAssist ?? this.cardJournalAssist,
       handicapsEnabled: handicapsEnabled ?? this.handicapsEnabled,
       beginnerTips: beginnerTips ?? this.beginnerTips,
+      scorePane: scorePane ?? this.scorePane,
+      namedPanes: namedPanes ?? this.namedPanes,
     );
   }
 
@@ -1233,6 +1329,10 @@ class AppSettings {
     'cardJournalAssist': cardJournalAssist,
     'handicapsEnabled': handicapsEnabled,
     'beginnerTips': beginnerTips,
+    'scorePane': scorePane.name,
+    'namedPanes': {
+      for (final entry in namedPanes.entries) entry.key: entry.value.name,
+    },
   };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -1259,6 +1359,12 @@ class AppSettings {
       cardJournalAssist: json['cardJournalAssist'] as bool? ?? true,
       handicapsEnabled: json['handicapsEnabled'] as bool? ?? false,
       beginnerTips: json['beginnerTips'] as bool? ?? false,
+      scorePane: ScorePane.values.firstWhere(
+        (pane) => pane.name == json['scorePane'],
+        orElse: () =>
+            json['selfScoring'] == true ? ScorePane.own : ScorePane.foes,
+      ),
+      namedPanes: _namedPanes(json['namedPanes']),
     );
   }
 }

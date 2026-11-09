@@ -259,7 +259,10 @@ class _SetupScreenState extends State<SetupScreen> {
       resetManaOnTurn: widget.settings.resetManaOnTurn,
       resetStormOnTurn: widget.settings.resetStormOnTurn,
       commanderThreshold: widget.settings.commanderThreshold,
-      poisonThreshold: widget.settings.poisonThreshold,
+      poisonThreshold: poisonThresholdFor(
+        _format,
+        widget.settings.poisonThreshold,
+      ),
       turnAlertSeconds: widget.settings.turnAlertSeconds,
       timerMode: widget.settings.timerMode,
       timersEnabled: widget.settings.timersEnabled,
@@ -419,6 +422,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const SizedBox(height: 8),
               HelpTip(
+                enabled: widget.settings.beginnerTips,
                 title: 'Formats',
                 message:
                     'Maintenez un format, ou touchez le i, pour lire '
@@ -436,6 +440,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 children: [
                   for (final info in formatCatalog)
                     HelpTip(
+                      enabled: widget.settings.beginnerTips,
                       title: info.label,
                       message: info.help,
                       child: ChoiceChip(
@@ -448,6 +453,7 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               const SizedBox(height: 8),
               HelpTip(
+                enabled: widget.settings.beginnerTips,
                 title: formatInfo(_format).label,
                 message: formatInfo(_format).help,
                 showIcon: true,
@@ -806,6 +812,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         const SizedBox(height: 4),
                         HandicapPicker(
                           compact: true,
+                          tips: widget.settings.beginnerTips,
                           bracket: player.deckBracket,
                           lifeDelta: player.handicapLifeDelta,
                           baseLife: _life,

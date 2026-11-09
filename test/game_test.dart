@@ -228,6 +228,18 @@ void main() {
     expect(game.playerById(defender.id).damageTaken[commander.id], 2);
   });
 
+  test('la vitesse s’arrête à 4, comme dans les règles', () {
+    final game = pod();
+    final id = game.game.players[0].id;
+    game.bumpStat(id, Stat.speed, 9);
+    expect(game.playerById(id).speed, 4);
+    game.setRing(id, 8);
+    expect(game.playerById(id).ring, 4);
+    expect(statPlayOrder.first, Stat.poison);
+    expect(statPlayOrder[1], Stat.treasure);
+    expect(statLabel(Stat.storm), 'Tempête');
+  });
+
   test('10 poison élimine, 9 non', () {
     final game = pod();
     final id = game.game.players[0].id;
@@ -255,6 +267,72 @@ void main() {
     expect(game.game.turnCount, 5);
     expect(game.playerById(first).mana['U'], 0);
     expect(game.playerById(first).storm, 0);
+  });
+
+  test('la couronne suit les blessures de combat et le départ', () {
+    final game = pod();
+    final monarch = game.game.players[0];
+    final attacker = game.game.players[1];
+    final commander = attacker.commanders.first;
+    expect(game.game.monarchId, isNull);
+    game.toggleMonarch(monarch.id);
+    expect(game.game.monarchId, monarch.id);
+
+    game.addLife(monarch.id, -1);
+    expect(game.game.monarchId, monarch.id);
+    expect(game.combatAsk?.attackerId, isNull);
+    game.answerCombat(null);
+    expect(game.combatAsk, isNull);
+    game.addLife(monarch.id, -1);
+    expect(game.combatAsk, isNull);
+
+    game.nextTurn();
+    game.addLife(monarch.id, -1, dealtBy: attacker.id);
+    expect(game.combatAsk?.attackerId, attacker.id);
+    game.answerCombat(attacker.id);
+    expect(game.game.monarchId, attacker.id);
+    expect(game.crownChange?.lostId, monarch.id);
+    expect(game.crownChange?.gainedId, attacker.id);
+
+    game.toggleMonarch(monarch.id);
+    game.addCommanderDamage(
+      defenderId: monarch.id,
+      commanderId: commander.id,
+      delta: 1,
+    );
+    expect(game.game.monarchId, attacker.id);
+    game.undo();
+    expect(game.game.monarchId, monarch.id);
+
+    game.addLife(monarch.id, -80);
+    expect(game.game.monarchId, attacker.id);
+  });
+
+  test('l’initiative suit le commandant et le départ', () {
+    final game = pod();
+    final holder = game.game.players[0];
+    final attacker = game.game.players[1];
+    final commander = attacker.commanders.first;
+    game.toggleInitiative(holder.id);
+    game.addCommanderDamage(
+      defenderId: holder.id,
+      commanderId: commander.id,
+      delta: 1,
+    );
+    expect(game.game.initiativeId, attacker.id);
+    game.undo();
+    expect(game.game.initiativeId, holder.id);
+
+    game.removePlayer(holder.id);
+    expect(game.game.initiativeId, attacker.id);
+  });
+
+  test('le poison du géant à deux têtes est à 15', () {
+    final game = pod(players: 4, shared: true, format: MatchFormat.twoHeaded);
+    game.applyRules(AppSettings.defaults);
+    expect(game.game.poisonThreshold, 15);
+    game.applyRules(AppSettings.defaults.copyWith(poisonThreshold: 12));
+    expect(game.game.poisonThreshold, 12);
   });
 
   test('un seul monarque à la fois', () {
@@ -471,5 +549,24 @@ void main() {
     expect(controller.game.timersEnabled, isTrue);
     controller.applyRules(AppSettings.defaults);
     expect(controller.game.timersEnabled, isFalse);
+  });
+
+  test('une préférence d’affichage suit le pseudo', () {
+    final saved = AppSettings.defaults.savingPane('Yann', ScorePane.own);
+    expect(saved.paneNamed('yann'), ScorePane.own);
+    expect(saved.paneNamed('Bo'), ScorePane.foes);
+    final replaced = saved.savingPane('YANN', ScorePane.both);
+    expect(replaced.namedPanes.length, 1);
+    expect(replaced.paneNamed('Yann'), ScorePane.both);
+    expect(replaced.forgettingPane('yann').paneNamed('Yann'), ScorePane.foes);
+    final phone = AppSettings.defaults.copyWith(scorePane: ScorePane.own);
+    expect(phone.paneNamed('Inconnu'), ScorePane.own);
+    final kept = phone.savingPane('Yann', ScorePane.foes);
+    expect(kept.paneNamed('Yann'), ScorePane.foes);
+    expect(kept.paneNamed('Bo'), ScorePane.own);
+    final legacy = AppSettings.fromJson({
+      'namedPanes': {'Yann': 'own'},
+    });
+    expect(legacy.paneNamed('Yann'), ScorePane.own);
   });
 }

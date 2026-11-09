@@ -11,8 +11,75 @@ import 'package:mtg_table/ui/sheets/counters_sheet.dart';
 import 'package:mtg_table/ui/sheets/life_log_sheet.dart';
 import 'package:mtg_table/ui/sheets/player_sheet.dart';
 import 'package:mtg_table/ui/widgets/danger_life.dart';
+import 'package:mtg_table/ui/help/option_help.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
 import 'package:mtg_table/ui/widgets/repeat_tap.dart';
+
+/// Fin de tour. Si le joueur actif est monarque, on lui demande d’abord
+/// s’il a pioché la carte de son étape de fin.
+Future<void> endPlayerTurn(
+  BuildContext context,
+  GameController controller,
+) async {
+  final game = controller.game;
+  if (game.players.isEmpty) return;
+  final active = game.players[game.activeIndex];
+  if (game.monarchId == active.id) {
+    final drew = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Étape de fin'),
+        content: Text(
+          '${active.name}, vous êtes monarque. Au début de cette étape, '
+          'vous piochiez une carte. C’est fait ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Pas encore'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Oui, carte piochée'),
+          ),
+        ],
+      ),
+    );
+    if (drew != true) return;
+  }
+  controller.nextTurn();
+}
+
+/// Affichage choisi pour chaque siège de la partie en cours.
+class SeatPanes extends InheritedWidget {
+  const SeatPanes({
+    required this.byId,
+    required this.onChoose,
+    required this.onSave,
+    required super.child,
+  });
+
+  final Map<String, ScorePane> byId;
+  final void Function(String playerId, ScorePane pane) onChoose;
+  final void Function(String playerId) onSave;
+
+  static ScorePane paneOf(BuildContext context, String playerId) {
+    final scope = context.dependOnInheritedWidgetOfExactType<SeatPanes>();
+    return scope?.byId[playerId] ?? ScorePane.foes;
+  }
+
+  static SeatPanes? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SeatPanes>();
+
+  @override
+  bool updateShouldNotify(SeatPanes oldWidget) {
+    if (oldWidget.byId.length != byId.length) return true;
+    for (final entry in byId.entries) {
+      if (oldWidget.byId[entry.key] != entry.value) return true;
+    }
+    return false;
+  }
+}
 
 /// + et +5 partagent une famille. Le saut est plus sombre, comme − et −5.
 /// La couleur du joueur reste sur son badge.
@@ -67,6 +134,7 @@ class PlayerPanel extends StatelessWidget {
             ? constraints.maxHeight
             : 360.0;
         // Cdt toujours visible si le format le suit (sinon le zoom « disparaît »).
+        final pane = SeatPanes.paneOf(context, playerId);
         final showCmd = game.trackCommanderDamage && !multi;
         final opponentPad = !multi && target.id != player.id;
         // Poison, monarque et taxe seulement s’il reste de la place pour le pad.
@@ -114,8 +182,9 @@ class PlayerPanel extends StatelessWidget {
                         color: color,
                         active: active,
                         band: threat,
+                        showTips: showTips,
                       ),
-                      if (opponentPad)
+                      if (opponentPad && pane == ScorePane.foes)
                         _OwnLifeRow(
                           controller: controller,
                           player: player,
@@ -123,20 +192,38 @@ class PlayerPanel extends StatelessWidget {
                           startLife: startLife,
                           fontSize: ownSize,
                         ),
-                      if (showQuick)
-                        _QuickStatus(
-                          controller: controller,
-                          player: player,
-                          color: color,
-                          haptic: haptic,
-                          showTips: showTips,
-                        ),
-                      if (showQuick && player.custom.isNotEmpty)
-                        _ResourceStrip(
-                          controller: controller,
-                          player: player,
-                          haptic: haptic,
-                        ),
+                      if (pane != ScorePane.foes)
+                        pane == ScorePane.own
+                            ? Expanded(
+                                child: _OwnLosses(
+                                  controller: controller,
+                                  player: player,
+                                  color: color,
+                                  haptic: haptic,
+                                  startLife: startLife,
+                                  showTips: showTips,
+                                  expand: true,
+                                  active: active,
+                                ),
+                              )
+                            : _OwnLosses(
+                                controller: controller,
+                                player: player,
+                                color: color,
+                                haptic: haptic,
+                                startLife: startLife,
+                                showTips: showTips,
+                                expand: false,
+                              ),
+                      _SeatOptions(
+                        controller: controller,
+                        player: player,
+                        color: color,
+                        haptic: haptic,
+                        showTips: showTips,
+                        full: pane != ScorePane.foes || showQuick,
+                      ),
+                      if (pane != ScorePane.own)
                       Expanded(
                         child: _LifePad(
                           controller: controller,
@@ -149,13 +236,15 @@ class PlayerPanel extends StatelessWidget {
                           startingLife: targetStart,
                           seatActive: active,
                           numberSize: opponentPad ? opponentSize : null,
+                          showTips: showTips,
                         ),
                       ),
-                      _ReceivedCommanders(
-                        controller: controller,
-                        player: player,
-                      ),
-                      if (showCmd)
+                      if (opponentPad && pane == ScorePane.foes)
+                        _ReceivedCommanders(
+                          controller: controller,
+                          player: player,
+                        ),
+                      if (showCmd && pane != ScorePane.own)
                         _CommanderStrip(
                           controller: controller,
                           attacker: player,
@@ -167,6 +256,7 @@ class PlayerPanel extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (showTips) _CrownMood(controller: controller, playerId: player.id),
                 if (defeated)
                   Positioned.fill(
                     child: _DefeatOverlay(
@@ -184,6 +274,48 @@ class PlayerPanel extends StatelessWidget {
   }
 }
 
+/// Tête triste ou sourire, quelques secondes, seulement avec l’aide débutant.
+class _CrownMood extends StatelessWidget {
+  const _CrownMood({required this.controller, required this.playerId});
+
+  final GameController controller;
+  final String playerId;
+
+  @override
+  Widget build(BuildContext context) {
+    final shift = controller.crownChange;
+    final at = controller.crownAt;
+    if (shift == null || at == null) return const SizedBox.shrink();
+    if (DateTime.now().difference(at) >= const Duration(seconds: 5)) {
+      return const SizedBox.shrink();
+    }
+    final lost = shift.lostId == playerId;
+    final gained = shift.gainedId == playerId;
+    if (!lost && !gained) return const SizedBox.shrink();
+    final icon = gained
+        ? Icons.sentiment_very_satisfied
+        : Icons.sentiment_dissatisfied;
+    final color = gained ? const Color(0xFFE8FFF2) : const Color(0xFFFFE4E8);
+    final fill = gained ? const Color(0xFF157A52) : const Color(0xFF5C2432);
+    return Positioned(
+      top: 8,
+      right: 8,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Icon(icon, color: color, size: 22),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.controller,
@@ -191,6 +323,7 @@ class _TopBar extends StatelessWidget {
     required this.color,
     required this.active,
     required this.band,
+    required this.showTips,
   });
 
   final GameController controller;
@@ -198,6 +331,7 @@ class _TopBar extends StatelessWidget {
   final Color color;
   final bool active;
   final LifeBand band;
+  final bool showTips;
 
   @override
   Widget build(BuildContext context) {
@@ -225,7 +359,12 @@ class _TopBar extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: InkWell(
-                  onTap: () => showPlayerSheet(context, controller, player.id),
+                  onTap: () => showPlayerSheet(
+                  context,
+                  controller,
+                  player.id,
+                  tips: showTips,
+                ),
                   child: Row(
                     children: [
                       Flexible(
@@ -299,18 +438,93 @@ class _TopBar extends StatelessWidget {
                     ),
                   ),
                 ),
-              _CmdIconButton(
-                tooltip: 'Options',
-                background: Colors.white.withValues(alpha: 0.08),
-                foreground: Colors.white,
-                icon: Icons.settings,
-                onPressed: () =>
-                    showCountersSheet(context, controller, player.id),
+              _PaneButton(
+                player: player,
+                size: 44,
+                showTips: showTips,
+              ),
+              HelpTip(
+                enabled: showTips,
+                longPress: false,
+                title: tipGear.title,
+                message: tipGear.message,
+                child: _CmdIconButton(
+                  tooltip: 'Options',
+                  background: Colors.white.withValues(alpha: 0.08),
+                  foreground: Colors.white,
+                  icon: Icons.settings,
+                  onPressed: () => showCountersSheet(
+                    context,
+                    controller,
+                    player.id,
+                    tips: showTips,
+                  ),
+                ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PaneButton extends StatelessWidget {
+  const _PaneButton({
+    required this.player,
+    required this.size,
+    required this.showTips,
+  });
+
+  final Player player;
+  final double size;
+  final bool showTips;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = SeatPanes.maybeOf(context);
+    final pane = scope?.byId[player.id] ?? ScorePane.foes;
+    String mark(ScorePane value) {
+      final label = scorePaneLabel(value);
+      return pane == value ? '$label  · actuel' : label;
+    }
+
+    return HelpTip(
+      enabled: showTips,
+      longPress: false,
+      title: tipPane.title,
+      message: tipPane.message,
+      child: PopupMenuButton<int>(
+      tooltip: 'Affichage des points',
+      padding: EdgeInsets.zero,
+      onSelected: (value) {
+        if (scope == null) return;
+        if (value == 3) {
+          scope.onSave(player.id);
+        } else {
+          scope.onChoose(player.id, ScorePane.values[value]);
+        }
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem(value: 0, child: Text(mark(ScorePane.own))),
+        PopupMenuItem(value: 1, child: Text(mark(ScorePane.both))),
+        PopupMenuItem(value: 2, child: Text(mark(ScorePane.foes))),
+        PopupMenuItem(
+          value: 3,
+          child: Text('Enregistrer pour ${player.name}'),
+        ),
+      ],
+      child: SizedBox(
+        key: ValueKey('pane-${player.id}'),
+        width: size,
+        height: size,
+        child: Icon(
+          Icons.visibility,
+          size: size < 36 ? 18 : 22,
+          color: pane == ScorePane.foes ? Colors.white70 : accent,
+        ),
+      ),
+    ),
     );
   }
 }
@@ -354,13 +568,44 @@ class _CmdIconButton extends StatelessWidget {
   }
 }
 
-class _QuickStatus extends StatelessWidget {
-  const _QuickStatus({
+bool _coreOptions(Game game, Player player, {required bool full}) {
+  if (full || player.poison != 0 || game.monarchId == player.id) return true;
+  if (game.initiativeId == player.id || player.blessing) return true;
+  return game.trackCommanderTax &&
+      player.commanders.any((commander) => full || commander.tax > 0);
+}
+
+int _parameterCount(Game game, Player player) {
+  var count = player.custom.length + (player.ring != 0 ? 1 : 0);
+  for (final stat in Stat.values) {
+    if (stat == Stat.poison) continue;
+    if (stat == Stat.signature && game.format != MatchFormat.oathbreaker) {
+      continue;
+    }
+    if (player.readStat(stat) != 0) count++;
+  }
+  for (final key in manaKeys) {
+    if ((player.mana[key] ?? 0) != 0) count++;
+  }
+  return count;
+}
+
+/// Hauteur réservée aux options. 0 si rien n’est à montrer.
+/// [full] : poison, monarque et taxe restent affichés même à zéro.
+double seatOptionsExtent(Game game, Player player, {required bool full}) {
+  final core = _coreOptions(game, player, full: full) ? 56.0 : 0.0;
+  return core + _parameterCount(game, player) * 56.0;
+}
+
+/// Compteurs ouverts depuis la roue crantée, avec leur valeur.
+class _SeatOptions extends StatelessWidget {
+  const _SeatOptions({
     required this.controller,
     required this.player,
     required this.color,
     required this.haptic,
     required this.showTips,
+    required this.full,
   });
 
   final GameController controller;
@@ -369,106 +614,239 @@ class _QuickStatus extends StatelessWidget {
   final bool haptic;
   final bool showTips;
 
+  /// Poison, monarque et taxe visibles même à zéro.
+  final bool full;
+
   @override
   Widget build(BuildContext context) {
     final game = controller.game;
-    final isMonarch = game.monarchId == player.id;
+    if (seatOptionsExtent(game, player, full: full) == 0) {
+      return const SizedBox.shrink();
+    }
     final poisonMax = game.poisonThreshold;
+    final poisonTip = tipPoison(poisonMax);
+    Widget explain(OptionTip tip, Widget child, {bool longPress = true}) {
+      return HelpTip(
+        enabled: showTips,
+        title: tip.title,
+        message: tip.message,
+        longPress: longPress,
+        child: child,
+      );
+    }
+
     String shortCmd(String name) {
       final trimmed = name.trim();
       if (trimmed.length <= 10) return trimmed;
       return '${trimmed.substring(0, 9)}…';
     }
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 2),
-      child: _ChipScroller(
-        children: [
-          HelpTip(
-            enabled: showTips,
-            title: 'Poison',
-            message:
-                'Marqueurs poison. À $poisonMax (réglable dans Réglages), '
-                'le joueur est éliminé. Touchez − / + pour ajuster.',
-            child: _StatusChip(
-              label: '☠ ${player.poison}',
-              active: player.poison > 0,
-              danger: player.poison >= poisonMax - 1,
-              onMinus: () {
-                controller.bumpStat(player.id, Stat.poison, -1);
-                buzz(haptic);
-              },
-              onPlus: () {
-                controller.bumpStat(player.id, Stat.poison, 1);
-                buzz(haptic);
-              },
-            ),
+
+    final core = <Widget>[
+      if (full || player.poison != 0)
+        explain(
+          poisonTip,
+          _StatusChip(
+            label: '☠ ${player.poison}',
+            active: player.poison > 0,
+            danger: player.poison >= poisonMax - 1,
+            onMinus: () {
+              controller.bumpStat(player.id, Stat.poison, -1);
+              buzz(haptic);
+            },
+            onPlus: () {
+              controller.bumpStat(player.id, Stat.poison, 1);
+              buzz(haptic);
+            },
           ),
-          HelpTip(
-            enabled: showTips,
-            title: 'Monarque',
-            message:
-                'Le monarque pioche une carte au début de son étape de fin. '
-                'S’il subit des dégâts de combat, l’attaquant devient '
-                'monarque. Il n’y en a qu’un à la table.',
-            child: _ToggleChip(
-              icon: Icons.workspace_premium,
-              label: 'Monarque',
-              active: isMonarch,
-              color: color,
-              onTap: () {
-                controller.toggleMonarch(player.id);
-                buzz(haptic);
-              },
-            ),
+        ),
+      if (full || game.monarchId == player.id)
+        explain(
+          tipMonarch,
+          _ToggleChip(
+            icon: Icons.workspace_premium,
+            label: 'Monarque',
+            active: game.monarchId == player.id,
+            color: color,
+            onTap: () {
+              controller.toggleMonarch(player.id);
+              buzz(haptic);
+            },
           ),
-          if (game.trackCommanderTax)
-            for (final commander in player.commanders)
-              HelpTip(
-                enabled: showTips,
-                title: 'Taxe de commandant',
-                message:
-                    'Mana en plus pour relancer ce commandant depuis '
-                    'la zone de commandement : +2 à chaque fois. '
-                    '+ augmente la taxe, − la baisse.',
-                child: _StatusChip(
-                  label: player.commanders.length == 1
-                      ? 'Taxe +${commander.tax}'
-                      : '${shortCmd(commander.name)} +${commander.tax}',
-                  active: commander.tax > 0,
-                  danger: false,
-                  onMinus: () {
-                    controller.castCommander(commander.id, -1);
-                    buzz(haptic);
-                  },
-                  onPlus: () {
-                    controller.castCommander(commander.id, 1);
-                    buzz(haptic);
-                  },
-                ),
-              ),
-          if (player.blessing)
-            HelpTip(
-              enabled: showTips,
-              title: 'Cité d’Or',
-              message:
-                  'Bénédiction de la Cité d’Or : elle reste une fois obtenue. '
-                  'Touchez pour la retirer.',
-              child: _ToggleChip(
-                icon: Icons.apartment,
-                label: 'Cité',
-                active: true,
-                color: color,
-                onTap: () {
-                  controller.toggleBlessing(player.id);
+        ),
+      if (game.initiativeId == player.id)
+        explain(
+          tipInitiative,
+          _ToggleChip(
+            icon: Icons.flag,
+            label: 'Initiative',
+            active: true,
+            color: color,
+            onTap: () {
+              controller.toggleInitiative(player.id);
+              buzz(haptic);
+            },
+          ),
+        ),
+      if (game.trackCommanderTax)
+        for (final commander in player.commanders)
+          if (full || commander.tax > 0)
+            explain(
+              tipTax,
+              _StatusChip(
+                label: player.commanders.length == 1
+                    ? 'Taxe +${commander.tax}'
+                    : '${shortCmd(commander.name)} +${commander.tax}',
+                active: commander.tax > 0,
+                danger: false,
+                onMinus: () {
+                  controller.castCommander(commander.id, -1);
+                  buzz(haptic);
+                },
+                onPlus: () {
+                  controller.castCommander(commander.id, 1);
                   buzz(haptic);
                 },
               ),
             ),
-        ],
-      ),
+      if (player.blessing)
+        explain(
+          tipBlessing,
+          _ToggleChip(
+            icon: Icons.apartment,
+            label: 'Cité',
+            active: true,
+            color: color,
+            onTap: () {
+              controller.toggleBlessing(player.id);
+              buzz(haptic);
+            },
+          ),
+        ),
+    ];
+    final parameters = <Widget>[
+      for (final stat in statPlayOrder)
+        if (stat != Stat.poison &&
+            stat != Stat.rad &&
+            stat != Stat.speed &&
+            stat != Stat.signature &&
+            player.readStat(stat) != 0)
+          explain(
+            tipForStat(stat, player),
+            _StatusChip(
+              label: '${_statShort(stat, player)} ${player.readStat(stat)}',
+              active: true,
+              danger: false,
+              onMinus: () {
+                controller.bumpStat(player.id, stat, -1);
+                buzz(haptic);
+              },
+              onPlus: () {
+                controller.bumpStat(player.id, stat, 1);
+                buzz(haptic);
+              },
+            ),
+          ),
+      for (final key in manaKeys)
+        if ((player.mana[key] ?? 0) != 0)
+          explain(
+            tipMana,
+            _StatusChip(
+            label: '$key ${player.mana[key]}',
+            active: true,
+            danger: false,
+            onMinus: () {
+              controller.bumpMana(player.id, key, -1);
+              buzz(haptic);
+            },
+            onPlus: () {
+              controller.bumpMana(player.id, key, 1);
+              buzz(haptic);
+            },
+          ),
+          ),
+      if (player.ring != 0)
+        explain(
+          tipRing,
+          _StatusChip(
+          label: 'Anneau ${player.ring}',
+          active: true,
+          danger: false,
+          onMinus: () {
+            controller.setRing(player.id, player.ring - 1);
+            buzz(haptic);
+          },
+          onPlus: () {
+            controller.setRing(player.id, player.ring + 1);
+            buzz(haptic);
+          },
+        ),
+        ),
+      for (final stat in [Stat.rad, Stat.speed, Stat.signature])
+        if ((stat != Stat.signature ||
+                game.format == MatchFormat.oathbreaker) &&
+            player.readStat(stat) != 0)
+          explain(
+            tipForStat(stat, player),
+            _StatusChip(
+              label: '${_statShort(stat, player)} ${player.readStat(stat)}',
+              active: true,
+              danger: false,
+              onMinus: () {
+                controller.bumpStat(player.id, stat, -1);
+                buzz(haptic);
+              },
+              onPlus: () {
+                controller.bumpStat(player.id, stat, 1);
+                buzz(haptic);
+              },
+            ),
+          ),
+      for (final counter in player.custom)
+        explain(
+          OptionTip(counter.name, tipCustom.message),
+          _StatusChip(
+          label: '${counter.name} ${counter.value}',
+          active: counter.value != 0,
+          danger: false,
+          onMinus: () {
+            controller.bumpCustom(player.id, counter.id, -1);
+            buzz(haptic);
+          },
+          onPlus: () {
+            controller.bumpCustom(player.id, counter.id, 1);
+            buzz(haptic);
+          },
+        ),
+        ),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (core.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: _ChipScroller(children: core),
+          ),
+        if (parameters.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Wrap(spacing: 6, runSpacing: 6, children: parameters),
+          ),
+      ],
     );
   }
 }
+
+String _statShort(Stat stat, Player player) => switch (stat) {
+  Stat.poison => 'Poison',
+  Stat.energy => 'Énergie',
+  Stat.experience => 'XP',
+  Stat.rad => 'Rad',
+  Stat.speed => 'Vitesse',
+  Stat.treasure => 'Trésors',
+  Stat.storm => 'Tempête',
+  Stat.signature => player.signatureName,
+};
 
 /// Pastilles en lignes, sans liste qui vole le doigt.
 class _ChipScroller extends StatelessWidget {
@@ -486,44 +864,6 @@ class _ChipScroller extends StatelessWidget {
         itemCount: children.length,
         separatorBuilder: (_, _) => const SizedBox(width: 6),
         itemBuilder: (_, index) => children[index],
-      ),
-    );
-  }
-}
-
-/// Suivis libres créés par le joueur. Mana, storm et initiative sont dans Options.
-class _ResourceStrip extends StatelessWidget {
-  const _ResourceStrip({
-    required this.controller,
-    required this.player,
-    required this.haptic,
-  });
-
-  final GameController controller;
-  final Player player;
-  final bool haptic;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: _ChipScroller(
-        children: [
-          for (final counter in player.custom.take(2))
-            _StatusChip(
-              label: '${counter.name} ${counter.value}',
-              active: counter.value != 0,
-              danger: false,
-              onMinus: () {
-                controller.bumpCustom(player.id, counter.id, -1);
-                buzz(haptic);
-              },
-              onPlus: () {
-                controller.bumpCustom(player.id, counter.id, 1);
-                buzz(haptic);
-              },
-            ),
-        ],
       ),
     );
   }
@@ -666,6 +1006,8 @@ class _LifePad extends StatelessWidget {
     required this.startingLife,
     required this.seatActive,
     this.numberSize,
+    this.showHistory = true,
+    this.showTips = false,
   });
 
   final GameController controller;
@@ -681,12 +1023,20 @@ class _LifePad extends StatelessWidget {
   final bool showFive;
   final int startingLife;
   final bool seatActive;
+  final bool showTips;
 
   /// Chiffre de l’adversaire, plus petit que les PV perso.
   final double? numberSize;
 
+  /// Lignes d’historique au-dessus du gros chiffre.
+  final bool showHistory;
+
   void _delta(int value) {
-    controller.addLife(target.id, value);
+    controller.addLife(
+      target.id,
+      value,
+      dealtBy: target.id == seatPlayer.id ? null : seatPlayer.id,
+    );
     buzz(haptic);
   }
 
@@ -698,8 +1048,12 @@ class _LifePad extends StatelessWidget {
     required Color textColor,
     required int step,
     required int jump,
+    String? semantics,
   }) {
-    final button = RepeatTap(
+    final button = Semantics(
+      button: true,
+      label: semantics,
+      child: RepeatTap(
       onTick: () => _delta(step),
       child: DecoratedBox(
           decoration: BoxDecoration(
@@ -727,6 +1081,7 @@ class _LifePad extends StatelessWidget {
             ),
           ),
         ),
+      ),
     );
     if (!showFive) return button;
     return LayoutBuilder(
@@ -792,6 +1147,9 @@ class _LifePad extends StatelessWidget {
                 textColor: const Color(0xFFFFE4E8),
                 step: -1,
                 jump: -5,
+                semantics: opponent
+                    ? 'Retirer un point à ${target.name}'
+                    : 'Retirer un point de ma vie',
               ),
             ),
             Expanded(
@@ -818,8 +1176,13 @@ class _LifePad extends StatelessWidget {
                             : 'Vie de l’adversaire. − enlève, + rend.',
                         listenable: controller,
                         current: () => controller.playerById(target.id).life,
-                        onDelta: (delta) =>
-                            controller.addLife(target.id, delta),
+                        onDelta: (delta) => controller.addLife(
+                          target.id,
+                          delta,
+                          dealtBy: target.id == seatPlayer.id
+                              ? null
+                              : seatPlayer.id,
+                        ),
                         onSet: (value) => controller.setLife(target.id, value),
                       ),
                     ),
@@ -872,7 +1235,7 @@ class _LifePad extends StatelessWidget {
         );
         return Column(
           children: [
-            if (histLines > 0)
+            if (showHistory && histLines > 0)
               _CountHistory(
                 controller: controller,
                 playerId: target.id,
@@ -887,7 +1250,11 @@ class _LifePad extends StatelessWidget {
                 child: SizedBox(
                   height: endTurnHeight,
                   width: double.infinity,
-                  child: FilledButton(
+                  child: HelpTip(
+                    enabled: showTips,
+                    title: tipEndTurn.title,
+                    message: tipEndTurn.message,
+                    child: FilledButton(
                     key: ValueKey('fin-de-tour-${seatPlayer.id}'),
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(48, 48),
@@ -895,7 +1262,7 @@ class _LifePad extends StatelessWidget {
                       tapTargetSize: MaterialTapTargetSize.padded,
                     ),
                     onPressed: () {
-                      controller.nextTurn();
+                      endPlayerTurn(context, controller);
                       buzz(haptic);
                     },
                     child: const Text(
@@ -903,6 +1270,7 @@ class _LifePad extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
                   ),
                 ),
               ),
@@ -1894,6 +2262,70 @@ class _OwnLifeRow extends StatelessWidget {
   }
 }
 
+/// Partie haute : ma vie, et les commandants adverses déjà reçus.
+class _OwnLosses extends StatelessWidget {
+  const _OwnLosses({
+    required this.controller,
+    required this.player,
+    required this.color,
+    required this.haptic,
+    required this.startLife,
+    required this.showTips,
+    required this.expand,
+    this.active = false,
+  });
+
+  final GameController controller;
+  final Player player;
+  final Color color;
+  final bool haptic;
+  final int startLife;
+  final bool showTips;
+  final bool expand;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final life = _LifePad(
+      controller: controller,
+      seatPlayer: player,
+      target: player,
+      color: color,
+      haptic: haptic,
+      compact: !expand,
+      showFive: true,
+      startingLife: startLife,
+      seatActive: active,
+      showHistory: false,
+      showTips: showTips,
+    );
+    final strip = controller.game.trackCommanderDamage
+        ? _BandCmdStrip(
+            controller: controller,
+            seat: player,
+            haptic: haptic,
+            dealing: false,
+            showTips: showTips,
+          )
+        : null;
+    if (!expand) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(height: 112, child: life),
+          if (strip != null) strip,
+        ],
+      );
+    }
+    return Column(
+      children: [
+        Expanded(child: life),
+        if (strip != null) strip,
+      ],
+    );
+  }
+}
+
 class _StepKey extends StatelessWidget {
   const _StepKey({
     required this.label,
@@ -2048,6 +2480,7 @@ class _BandCmdStrip extends StatelessWidget {
     this.showTips = false,
     this.selected = const {},
     this.zone = false,
+    this.received = true,
   });
 
   final GameController controller;
@@ -2057,6 +2490,9 @@ class _BandCmdStrip extends StatelessWidget {
   final bool showTips;
   final Set<String> selected;
   final bool zone;
+
+  /// Vrai : commandants adverses reçus. Faux : mes commandants infligés.
+  final bool received;
 
   @override
   Widget build(BuildContext context) {
@@ -2071,7 +2507,8 @@ class _BandCmdStrip extends StatelessWidget {
       for (final owner in opponents)
         for (final commander in owner.commanders) (owner: owner, commander: commander),
     ];
-    if (mine.isEmpty && incoming.isEmpty) return const SizedBox.shrink();
+    if (received && incoming.isEmpty) return const SizedBox.shrink();
+    if (!received && mine.isEmpty) return const SizedBox.shrink();
 
     final targets = zone
         ? [for (final player in opponents) player.id]
@@ -2090,15 +2527,16 @@ class _BandCmdStrip extends StatelessWidget {
         children: [
           HelpTip(
             enabled: showTips,
-            title: 'Commandant reçu',
-            message:
-                'Pastille du commandant qui t’a infligé des points, '
-                'avec la couleur de son propriétaire. Le nombre est '
-                'les points déjà pris, « reste » est ce qu’il manque '
-                'avant d’être éliminé. − ajoute 1 dégât de ce commandant '
-                'et retire 1 vie. Touche le centre pour l’historique.',
+            title: received ? 'Commandant reçu' : 'Commandant infligé',
+            message: received
+                ? 'Commandant adverse, en haut du profil. '
+                    'Le nombre monte : ce sont les points déjà pris. '
+                    '− et −5 t’enlèvent cette vie. + et +5 te la rendent.'
+                : 'Tes commandants, sur les profils choisis plus haut. '
+                    '− et −5 retirent cette vie à chaque cible. '
+                    '+ et +5 la rendent.',
             child: Text(
-              'Reçu',
+              received ? 'Reçu' : 'Infligé',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
@@ -2111,6 +2549,7 @@ class _BandCmdStrip extends StatelessWidget {
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
+                if (received)
                 for (final hit in incoming)
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
@@ -2135,20 +2574,7 @@ class _BandCmdStrip extends StatelessWidget {
                       },
                     ),
                   ),
-                if (dealing && mine.isNotEmpty) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Center(
-                      child: Text(
-                        'Mes',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white.withValues(alpha: 0.55),
-                        ),
-                      ),
-                    ),
-                  ),
+                if (!received)
                   for (final commander in mine)
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
@@ -2169,6 +2595,9 @@ class _BandCmdStrip extends StatelessWidget {
                             : targets.length == 1
                             ? null
                             : '×${targets.length}',
+                        label: isGenericCommanderName(commander.name)
+                            ? 'Cdt'
+                            : commander.name,
                         onDelta: (delta) {
                           if (targets.isEmpty) {
                             controller.flash(
@@ -2185,7 +2614,6 @@ class _BandCmdStrip extends StatelessWidget {
                         },
                       ),
                     ),
-                ],
               ],
             ),
           ),
@@ -2206,6 +2634,7 @@ class _CmdTick extends StatelessWidget {
     this.taken,
     this.remaining,
     this.hint,
+    this.label,
   });
 
   final GameController controller;
@@ -2216,6 +2645,7 @@ class _CmdTick extends StatelessWidget {
   final int? taken;
   final int? remaining;
   final String? hint;
+  final String? label;
   final void Function(int delta) onDelta;
 
   void _openMemory(BuildContext context) {
@@ -2233,9 +2663,8 @@ class _CmdTick extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = playerColor(owner.color);
-    final name = isGenericCommanderName(commander.name)
-        ? owner.name
-        : commander.name;
+    final name = label ??
+        (isGenericCommanderName(commander.name) ? owner.name : commander.name);
     final number = hint ?? (taken == null ? '—' : '$taken');
     final detail = hint != null || remaining == null
         ? null
@@ -2419,7 +2848,9 @@ class _BandSeat extends StatelessWidget {
   final bool showTips;
 
   @override
-  Widget _body({required bool showStrip}) {
+  Widget _body({required bool showStrip, required ScorePane pane}) {
+    final own = pane != ScorePane.foes;
+    final foes = pane != ScorePane.own;
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 2, 6, 2),
       child: Column(
@@ -2434,19 +2865,52 @@ class _BandSeat extends StatelessWidget {
               haptic: haptic,
               startLife: startLife,
               showTips: showTips,
+              ownLife: !own,
             ),
           ),
-          Expanded(
-            child: _TurnConsole(
+          _SeatOptions(
+            controller: controller,
+            player: player,
+            color: color,
+            haptic: haptic,
+            showTips: showTips,
+            full: pane != ScorePane.foes,
+          ),
+          if (own && foes)
+            _OwnLosses(
               controller: controller,
-              seat: player,
+              player: player,
               color: color,
               haptic: haptic,
-              active: active,
-              showStrip: showStrip,
+              startLife: startLife,
               showTips: showTips,
+              expand: false,
             ),
-          ),
+          if (own && !foes)
+            Expanded(
+              child: _OwnLosses(
+                controller: controller,
+                player: player,
+                color: color,
+                haptic: haptic,
+                startLife: startLife,
+                showTips: showTips,
+                expand: true,
+                active: active,
+              ),
+            ),
+          if (foes)
+            Expanded(
+              child: _TurnConsole(
+                controller: controller,
+                seat: player,
+                color: color,
+                haptic: haptic,
+                active: active,
+                showStrip: showStrip,
+                showTips: showTips,
+              ),
+            ),
         ],
       ),
     );
@@ -2459,14 +2923,22 @@ class _BandSeat extends StatelessWidget {
         final width = constraints.maxWidth;
         final height = constraints.maxHeight;
         final showStrip = controller.game.trackCommanderDamage;
+        final pane = SeatPanes.paneOf(context, player.id);
+        final options = seatOptionsExtent(
+          controller.game,
+          player,
+          full: pane != ScorePane.foes,
+        );
         // Taille où Mes PV, les cibles, les ±5 et les commandants tiennent.
         const designW = 300.0;
-        const designH = 210.0;
+        final designH = (pane == ScorePane.both ? 380.0 : 210.0) +
+            (pane == ScorePane.own ? 48.0 : 0.0) +
+            options;
         final tight = !width.isFinite ||
             !height.isFinite ||
             width < designW ||
             height < designH;
-        if (!tight) return _body(showStrip: showStrip);
+        if (!tight) return _body(showStrip: showStrip, pane: pane);
         final boxW = width.isFinite && width > designW ? width : designW;
         final boxH = height.isFinite && height > designH ? height : designH;
         return FittedBox(
@@ -2475,7 +2947,7 @@ class _BandSeat extends StatelessWidget {
           child: SizedBox(
             width: boxW,
             height: boxH,
-            child: _body(showStrip: showStrip),
+            child: _body(showStrip: showStrip, pane: pane),
           ),
         );
       },
@@ -2615,7 +3087,12 @@ class _BandHeader extends StatelessWidget {
             Expanded(
               flex: 3,
               child: InkWell(
-                onTap: () => showPlayerSheet(context, controller, player.id),
+                onTap: () => showPlayerSheet(
+                  context,
+                  controller,
+                  player.id,
+                  tips: showTips,
+                ),
                 child: Text(
                   player.name,
                   maxLines: 1,
@@ -2704,16 +3181,20 @@ class _BandHeader extends StatelessWidget {
                 },
               ),
             ],
+            _PaneButton(player: player, size: button, showTips: showTips),
             HelpTip(
               enabled: showTips,
               longPress: false,
-              title: 'Options',
-              message:
-                  'Poison, monarque, taxe de commandant, initiative '
-                  'et les autres compteurs.',
+              title: tipGear.title,
+              message: tipGear.message,
               child: RepeatTap(
                 repeat: false,
-                onTick: () => showCountersSheet(context, controller, player.id),
+                onTick: () => showCountersSheet(
+                  context,
+                  controller,
+                  player.id,
+                  tips: showTips,
+                ),
                 child: SizedBox(
                   width: button,
                   height: button,
@@ -2794,7 +3275,11 @@ class _TurnConsoleState extends State<_TurnConsole> {
       widget.controller.flash('Choisis une cible');
       return;
     }
-    widget.controller.addLifeMany(targets, delta);
+    widget.controller.addLifeMany(
+      targets,
+      delta,
+      dealtBy: widget.seat.id,
+    );
     buzz(widget.haptic);
   }
 
@@ -2816,6 +3301,8 @@ class _TurnConsoleState extends State<_TurnConsole> {
     final chosen = _zone
         ? game.players
         : [for (final player in opponents) if (selected.contains(player.id)) player];
+    const lifeSemantics = 'Enlever un point au profil choisi';
+    const lifeJumpSemantics = 'Enlever cinq points au profil choisi';
     return Column(
       children: [
         SizedBox(
@@ -2867,15 +3354,13 @@ class _TurnConsoleState extends State<_TurnConsole> {
                   padding: const EdgeInsets.only(left: 4),
                   child: HelpTip(
                     enabled: widget.showTips,
-                    title: 'Fin de tour',
-                    message:
-                        'Passe au joueur suivant. La surbrillance montre '
-                        'qui joue.',
+                    title: tipEndTurn.title,
+                    message: tipEndTurn.message,
                     child: _EndTurnButton(
                     seatId: widget.seat.id,
                     haptic: widget.haptic,
                     onPressed: () {
-                      widget.controller.nextTurn();
+                      endPlayerTurn(context, widget.controller);
                       buzz(widget.haptic);
                     },
                     compact: true,
@@ -2902,8 +3387,8 @@ class _TurnConsoleState extends State<_TurnConsole> {
                 child: _JumpPair(
                   stepLabel: '−',
                   jumpLabel: '−5',
-                  stepSemantics: 'Enlever un point au profil choisi',
-                  jumpSemantics: 'Enlever cinq points au profil choisi',
+                  stepSemantics: lifeSemantics,
+                  jumpSemantics: lifeJumpSemantics,
                   fill: const Color(0xFF5C2432),
                   jumpFill: const Color(0xFF421824),
                   foreground: const Color(0xFFFFE4E8),
@@ -2949,7 +3434,10 @@ class _TurnConsoleState extends State<_TurnConsole> {
             controller: widget.controller,
             seat: widget.seat,
             haptic: widget.haptic,
-            dealing: false,
+            dealing: true,
+            received: false,
+            selected: selected,
+            zone: _zone,
             showTips: widget.showTips,
           ),
       ],
@@ -3060,7 +3548,9 @@ class _OneLife extends StatelessWidget {
             onTap: () => showAmountSheet(
               context,
               title: player.name,
-              subtitle: 'Points de ce joueur. − enlève, + rend.',
+              subtitle: player.id == seatId
+                  ? 'Tes points. − enlève, + rend.'
+                  : 'Points de ce joueur. − enlève, + rend.',
               listenable: controller,
               current: () => controller.playerById(player.id).life,
               onDelta: (delta) => controller.addLife(player.id, delta),

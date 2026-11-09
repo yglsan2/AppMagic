@@ -2,21 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
+import 'package:mtg_table/ui/help/option_help.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
 import 'package:mtg_table/ui/widgets/repeat_tap.dart';
 
 Future<void> showCountersSheet(
   BuildContext context,
   GameController controller,
-  String playerId,
-) {
+  String playerId, {
+  bool tips = false,
+}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     builder: (context) {
       return SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.8,
-        child: CountersSheet(controller: controller, playerId: playerId),
+        child: CountersSheet(
+          controller: controller,
+          playerId: playerId,
+          tips: tips,
+        ),
       );
     },
   );
@@ -27,10 +34,12 @@ class CountersSheet extends StatelessWidget {
     super.key,
     required this.controller,
     required this.playerId,
+    this.tips = false,
   });
 
   final GameController controller;
   final String playerId;
+  final bool tips;
 
   @override
   Widget build(BuildContext context) {
@@ -38,6 +47,17 @@ class CountersSheet extends StatelessWidget {
       listenable: controller,
       builder: (context, _) {
         final player = controller.playerById(playerId);
+        final tips = this.tips;
+        Widget bubble(OptionTip tip, Widget child) {
+          if (!tips) return child;
+          return HelpTip(
+            title: tip.title,
+            message: tip.message,
+            showIcon: true,
+            child: child,
+          );
+        }
+
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           children: [
@@ -46,71 +66,68 @@ class CountersSheet extends StatelessWidget {
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Monarque'),
-              subtitle: const Text(
-                'Un seul à la table. Pioche en fin de tour.',
-              ),
-              value: controller.game.monarchId == playerId,
-              onChanged: (_) => controller.toggleMonarch(playerId),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Initiative'),
-              subtitle: const Text('Donjon. Une seule personne à la fois.'),
-              value: controller.game.initiativeId == playerId,
-              onChanged: (_) => controller.toggleInitiative(playerId),
-            ),
             if (controller.game.trackCommanderTax)
               for (final commander in player.commanders)
                 _StatRow(
-                  label: player.commanders.length == 1
-                      ? 'Taxe ${commander.name}'
-                      : 'Taxe ${commander.name}',
+                  label: 'Taxe ${commander.name}',
+                  note: 'Taxe de commandement : +2 à chaque lancement.',
+                  tip: tips ? tipTax : null,
                   value: commander.tax,
                   onDelta: (delta) =>
                       controller.castCommander(commander.id, delta),
                 ),
-            const Divider(),
-            for (final stat in Stat.values)
-              if (stat != Stat.signature ||
-                  controller.game.format == MatchFormat.oathbreaker)
-                _StatRow(
-                  label: stat == Stat.signature
-                      ? player.signatureName
-                      : statLabel(stat),
-                  value: player.readStat(stat),
-                  onDelta: (delta) =>
-                      controller.bumpStat(playerId, stat, delta),
-                  onEdit: stat == Stat.signature
-                      ? () async {
-                          final name = await askName(
-                            context,
-                            title: 'Sort signature',
-                            initial: player.signatureName,
-                          );
-                          if (name == null) return;
-                          controller.setSignatureName(playerId, name);
-                        }
-                      : null,
-                ),
             _StatRow(
-              label: 'Anneau',
-              value: player.ring,
+              label: statLabel(Stat.poison),
+              note:
+                  'À ${controller.game.poisonThreshold} marqueurs, défaite. '
+                  'Ce n’est pas une perte de vie.',
+              tip: tips ? tipPoison(controller.game.poisonThreshold) : null,
+              value: player.readStat(Stat.poison),
               onDelta: (delta) =>
-                  controller.setRing(playerId, player.ring + delta),
+                  controller.bumpStat(playerId, Stat.poison, delta),
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Bénédiction de la Cité'),
-              value: player.blessing,
-              onChanged: (_) => controller.toggleBlessing(playerId),
+              title: bubble(tipMonarch, const Text('Monarque')),
+              subtitle: const Text(
+                'Un seul à la table. Pioche au début de son étape de fin. '
+                'Les dégâts de combat le transmettent.',
+              ),
+              value: controller.game.monarchId == playerId,
+              onChanged: (_) => controller.toggleMonarch(playerId),
             ),
+            for (final stat in [
+              Stat.treasure,
+              Stat.energy,
+              Stat.experience,
+              Stat.storm,
+            ])
+              _StatRow(
+                label: statLabel(stat),
+                note: switch (stat) {
+                  Stat.storm =>
+                    'Sorts déjà lancés ce tour. Remis à zéro en fin de tour.',
+                  Stat.treasure => 'Jetons Trésor, sacrifiés pour un mana.',
+                  Stat.energy => 'Marqueurs énergie, gagnés et dépensés à la main.',
+                  Stat.experience =>
+                    'Marqueurs expérience, souvent à la mort d’une créature.',
+                  _ => null,
+                },
+                tip: tips ? tipForStat(stat, player) : null,
+                value: player.readStat(stat),
+                onDelta: (delta) => controller.bumpStat(playerId, stat, delta),
+              ),
             const Divider(),
+            bubble(
+              tipMana,
+              const Text(
+                'Mana',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+            ),
+            const SizedBox(height: 4),
             const Text(
-              'Mana',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              'Mana flottant. Vidé en fin de tour si le réglage est actif.',
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -128,12 +145,83 @@ class CountersSheet extends StatelessWidget {
             ),
             const Divider(),
             const Text(
-              'Suivis libres',
+              'Plus rares',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Toujours dans les règles, simplement moins vus à la table.',
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: bubble(tipInitiative, const Text('Initiative')),
+              subtitle: const Text(
+                'Une seule personne. Elle s’enfonce dans le donjon '
+                'à son entretien, et au moment où elle la prend.',
+              ),
+              value: controller.game.initiativeId == playerId,
+              onChanged: (_) => controller.toggleInitiative(playerId),
+            ),
+            _StatRow(
+              label: 'Anneau',
+              note: 'Nombre de tentations. Le dernier palier est à 4.',
+              tip: tips ? tipRing : null,
+              value: player.ring,
+              onDelta: (delta) =>
+                  controller.setRing(playerId, player.ring + delta),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: bubble(
+                tipBlessing,
+                const Text('Bénédiction de la Cité'),
+              ),
+              subtitle: const Text(
+                'Une fois obtenue, elle reste pour la partie.',
+              ),
+              value: player.blessing,
+              onChanged: (_) => controller.toggleBlessing(playerId),
+            ),
+            for (final stat in [Stat.rad, Stat.speed])
+              _StatRow(
+                label: statLabel(stat),
+                note: stat == Stat.speed
+                    ? 'De 0 à 4. Une fois par tour, si un adversaire perd des points de vie.'
+                    : 'Au début de la première phase principale, puis −1.',
+                tip: tips ? tipForStat(stat, player) : null,
+                value: player.readStat(stat),
+                onDelta: (delta) => controller.bumpStat(playerId, stat, delta),
+              ),
+            if (controller.game.format == MatchFormat.oathbreaker)
+              _StatRow(
+                label: player.signatureName,
+                note: 'Sort signature, format Briseur de serment.',
+                tip: tips ? tipSignature : null,
+                value: player.readStat(Stat.signature),
+                onDelta: (delta) =>
+                    controller.bumpStat(playerId, Stat.signature, delta),
+                onEdit: () async {
+                  final name = await askName(
+                    context,
+                    title: 'Sort signature',
+                    initial: player.signatureName,
+                  );
+                  if (name == null) return;
+                  controller.setSignatureName(playerId, name);
+                },
+              ),
+            const Divider(),
+            bubble(
+              tipCustom,
+              const Text(
+                'Suivis libres',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
             ),
             for (final counter in player.custom)
               _StatRow(
                 label: counter.name,
+                tip: tips ? OptionTip(counter.name, tipCustom.message) : null,
                 value: counter.value,
                 onDelta: (delta) =>
                     controller.bumpCustom(playerId, counter.id, delta),
@@ -146,7 +234,7 @@ class CountersSheet extends StatelessWidget {
                   final name = await askName(
                     context,
                     title: 'Nouveau suivi',
-                    hint: 'Ex. expérience de salle, indices…',
+                    hint: 'Ex. indices, nourriture, sang…',
                   );
                   if (name == null) return;
                   controller.addCustom(playerId, name);
@@ -167,11 +255,15 @@ class _StatRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onDelta,
+    this.note,
+    this.tip,
     this.onDelete,
     this.onEdit,
   });
 
   final String label;
+  final String? note;
+  final OptionTip? tip;
   final int value;
   final void Function(int delta) onDelta;
   final VoidCallback? onDelete;
@@ -185,19 +277,13 @@ class _StatRow extends StatelessWidget {
         children: [
           Expanded(
             child: onEdit == null
-                ? Text(
-                    label,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  )
+                ? _explained(label: label, note: note, tip: tip)
                 : InkWell(
                     onTap: onEdit,
                     child: Row(
                       children: [
                         Flexible(
-                          child: Text(
-                            label,
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
+                          child: _explained(label: label, note: note, tip: tip),
                         ),
                         const SizedBox(width: 4),
                         Icon(
@@ -229,6 +315,46 @@ class _StatRow extends StatelessWidget {
             IconButton(onPressed: onDelete, icon: const Icon(Icons.close)),
         ],
       ),
+    );
+  }
+}
+
+Widget _explained({
+  required String label,
+  required String? note,
+  required OptionTip? tip,
+}) {
+  final text = _StatLabel(label: label, note: note);
+  if (tip == null) return text;
+  return HelpTip(
+    title: tip.title,
+    message: tip.message,
+    showIcon: true,
+    child: text,
+  );
+}
+
+class _StatLabel extends StatelessWidget {
+  const _StatLabel({required this.label, this.note});
+
+  final String label;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        if (note != null)
+          Text(
+            note!,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withValues(alpha: 0.55),
+            ),
+          ),
+      ],
     );
   }
 }
