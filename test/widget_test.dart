@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mtg_table/domain/game_controller.dart';
+import 'package:mtg_table/net/table_link.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/setup/setup_screen.dart';
+import 'package:mtg_table/ui/sheets/my_commander_sheet.dart';
 import 'package:mtg_table/ui/sheets/settings_sheet.dart';
 import 'package:mtg_table/ui/table/table_screen.dart';
+import 'package:mtg_table/ui/widgets/danger_life.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
+import 'package:mtg_table/ui/widgets/option_glyphs.dart';
 import 'package:mtg_table/ui/widgets/player_panel.dart';
+import 'package:mtg_table/ui/widgets/vfx_film.dart';
 
 class _HoldSettings extends StatefulWidget {
   const _HoldSettings({
@@ -116,6 +121,174 @@ void main() {
     }
   });
 
+  testWidgets('4 joueurs : quatre rectangles égaux, jour au centre', (
+    tester,
+  ) async {
+    Future<void> check(Size size) async {
+      final controller = sample();
+      addTearDown(controller.dispose);
+      await pumpTable(tester, size, controller);
+      final error = tester.takeException();
+      if (error != null) {
+        final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
+        expect(tiny, isTrue, reason: '$size : $error');
+      }
+      final panels = find.byType(PlayerPanel);
+      expect(panels, findsNWidgets(4));
+      final rects = [
+        for (var i = 0; i < 4; i++) tester.getRect(panels.at(i)),
+      ]..sort((a, b) {
+        final down = a.top.compareTo(b.top);
+        return down != 0 ? down : a.left.compareTo(b.left);
+      });
+      final topLeft = rects[0];
+      final topRight = rects[1];
+      final bottomLeft = rects[2];
+      final bottomRight = rects[3];
+      for (final rect in rects.skip(1)) {
+        expect(rect.width, closeTo(topLeft.width, 3), reason: '$size');
+        expect(rect.height, closeTo(topLeft.height, 3), reason: '$size');
+      }
+      expect(topRight.left, closeTo(topLeft.right, 8), reason: '$size');
+      expect(bottomLeft.top, closeTo(topLeft.bottom, 8), reason: '$size');
+      expect(bottomRight.left, closeTo(bottomLeft.right, 8), reason: '$size');
+      expect(bottomRight.top, closeTo(topRight.bottom, 8), reason: '$size');
+      expect(topLeft.left, lessThan(topRight.left));
+      expect(topLeft.top, lessThan(bottomLeft.top));
+
+      int seatOf(Rect area) {
+        for (var i = 0; i < 4; i++) {
+          final panel = panels.at(i);
+          if ((tester.getRect(panel).center - area.center).distance < 30) {
+            final id = tester.widget<PlayerPanel>(panel).playerId;
+            return controller.game.players.indexWhere(
+              (player) => player.id == id,
+            );
+          }
+        }
+        return -1;
+      }
+
+      expect(seatOf(topLeft), 0, reason: '$size haut gauche');
+      expect(seatOf(topRight), 1, reason: '$size haut droite');
+      expect(seatOf(bottomRight), 2, reason: '$size bas droite');
+      expect(seatOf(bottomLeft), 3, reason: '$size bas gauche');
+
+      final sky = tester.getRect(find.byType(DayNightControl));
+      final meet = Offset(
+        (topLeft.right + topRight.left) / 2,
+        (topLeft.bottom + bottomLeft.top) / 2,
+      );
+      expect(sky.center.dx, closeTo(meet.dx, 28), reason: '$size');
+      expect(sky.center.dy, closeTo(meet.dy, 28), reason: '$size');
+    }
+
+    await check(const Size(360, 800));
+    await check(const Size(800, 360));
+    await check(const Size(700, 700));
+    await check(const Size(1280, 800));
+  });
+
+  testWidgets('le voile jour et nuit couvre chaque joueur', (tester) async {
+    Future<void> check(int count, Size size) async {
+      final controller = GameController(
+        game: Game.start(
+          playerCount: count,
+          names: [for (var i = 1; i <= count; i++) 'Joueur $i'],
+        ),
+      );
+      addTearDown(controller.dispose);
+      await pumpTable(tester, size, controller);
+      final error = tester.takeException();
+      if (error != null) {
+        final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
+        expect(tiny, isTrue, reason: '$count $size : $error');
+      }
+
+      void expectVeil(DayState sky) {
+        final panels = find.byType(PlayerPanel);
+        expect(panels, findsNWidgets(count), reason: '$count $size');
+        expect(find.byType(SkyVeil), findsNWidgets(count), reason: '$count $size');
+        for (var i = 0; i < count; i++) {
+          final panel = panels.at(i);
+          final box = find.descendant(
+            of: panel,
+            matching: find.byKey(const ValueKey('sky-veil')),
+          );
+          expect(box, findsOneWidget, reason: '$count joueur $i');
+          final tint = tester
+              .widget<ThreatPanelShell>(
+                find.descendant(
+                  of: panel,
+                  matching: find.byType(ThreatPanelShell),
+                ),
+              )
+              .playerTint;
+          final color = switch (sky) {
+            DayState.night => SkyVeil.nightFor(tint),
+            DayState.day => SkyVeil.dayTint,
+            DayState.unset => const Color(0x00000000),
+          };
+          expect(
+            tester.widget<CustomPaint>(box).painter,
+            isA<SkyWash>().having((wash) => wash.color, 'color', color),
+            reason: '$count $size',
+          );
+          if (sky == DayState.night) {
+            expect(
+              find.descendant(of: panel, matching: find.byType(ColorFiltered)),
+              findsOneWidget,
+              reason: '$count $size assombri comme l or',
+            );
+          }
+          final veil = tester.getRect(box);
+          final rect = tester.getRect(panel);
+          expect(veil.width, closeTo(rect.width, 28), reason: '$count $size');
+          expect(veil.height, closeTo(rect.height, 28), reason: '$count $size');
+          expect(rect.contains(veil.center), isTrue, reason: '$count joueur $i');
+          final film = find.descendant(
+            of: panel,
+            matching: find.byType(FxBoard),
+          );
+          if (film.evaluate().isNotEmpty) {
+            expect(
+              tester.getRect(film.first).shortestSide,
+              greaterThan(20),
+              reason: '$count joueur $i animation',
+            );
+          }
+        }
+      }
+
+      expectVeil(DayState.unset);
+      controller.setDay(DayState.night);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expectVeil(DayState.night);
+      controller.addLife(controller.game.players.first.id, -4);
+      await tester.pump();
+      expect(find.byType(FxBoard), findsWidgets, reason: '$count $size');
+      final struck = find.byType(FxBoard).first;
+      expect(tester.getRect(struck).shortestSide, greaterThan(20));
+      controller.setDay(DayState.day);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expectVeil(DayState.day);
+    }
+
+    await check(2, const Size(360, 800));
+    await check(2, const Size(1280, 800));
+    await check(3, const Size(390, 844));
+    await check(3, const Size(1280, 800));
+    await check(4, const Size(360, 800));
+    await check(4, const Size(800, 360));
+    await check(4, const Size(1280, 800));
+    await check(5, const Size(900, 1400));
+    await check(6, const Size(360, 800));
+    await check(6, const Size(1280, 800));
+    await check(8, const Size(900, 1600));
+  });
+
   testWidgets('5 à 8 joueurs gardent le même plateau, empilé', (tester) async {
     for (final count in [5, 6, 8]) {
       final controller = GameController(
@@ -137,8 +310,10 @@ void main() {
         expect(tiny, isTrue, reason: '$count joueurs : $error');
       }
       expect(find.text('Mes PV'), findsWidgets);
-      expect(find.text('Tous adv.'), findsWidgets);
-      expect(find.text('Infligé'), findsWidgets);
+      expect(find.text('Tous adv.'), findsNothing);
+      expect(find.text('Infligé'), findsNothing);
+      expect(find.text('Cdt'), findsWidgets);
+      expect(find.text('Cdt Joueur 2'), findsNothing);
       expect(find.text('−5'), findsWidgets);
       expect(find.text('+5'), findsWidgets);
       }
@@ -174,10 +349,44 @@ void main() {
       expect(find.text('Mes PV'), findsWidgets);
       await pick('Comptes empilés');
       noOverflow(tester.takeException(), 'empilés $size');
-      expect(find.text('Tous adv.'), findsWidgets);
+      expect(find.text('Mes PV'), findsWidgets);
+      expect(find.text('Cdt'), findsWidgets);
+      expect(find.text('Cdt Bo'), findsNothing);
       await pick('Façon téléphone');
       noOverflow(tester.takeException(), 'téléphone $size');
     }
+
+    final picked = GameController(
+      game: Game.start(
+        playerCount: 4,
+        names: const ['Ana', 'Bo', 'Celia', 'Dan'],
+      ),
+    );
+    addTearDown(picked.dispose);
+    await pumpTable(
+      tester,
+      const Size(1280, 800),
+      picked,
+      selfScoring: true,
+    );
+    expect(find.text('Cdt'), findsWidgets);
+    expect(find.text('Cdt Celia'), findsNothing);
+    final anaPanel = find.ancestor(
+      of: find.text('Ana'),
+      matching: find.byType(PlayerPanel),
+    ).first;
+    await tester.tap(
+      find.descendant(of: anaPanel, matching: find.text('Cdt')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Cdt Celia'), findsOneWidget);
+    await tester.tap(find.text('Cdt Celia'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('Cdt Celia'), findsOneWidget);
+    expect(find.text('Cdt Bo'), findsNothing);
+    noOverflow(tester.takeException(), 'choix commandant');
 
     final eight = GameController(
       game: Game.start(
@@ -190,12 +399,16 @@ void main() {
       await pumpTable(tester, size, eight);
       noOverflow(tester.takeException(), '8 liste $size');
       expect(find.text('Mes PV'), findsWidgets);
-      expect(find.text('Infligé'), findsWidgets);
+      expect(find.text('Infligé'), findsNothing);
+      expect(find.text('Cdt'), findsWidgets);
+      expect(find.text('Cdt Joueur 2'), findsNothing);
       await pick('En cercle');
       noOverflow(tester.takeException(), '8 cercle $size');
       expect(find.text('Mes PV'), findsWidgets);
-      expect(find.text('Tous adv.'), findsWidgets);
-      expect(find.text('Infligé'), findsWidgets);
+      expect(find.text('Tous adv.'), findsNothing);
+      expect(find.text('Infligé'), findsNothing);
+      expect(find.text('Cdt'), findsWidgets);
+      expect(find.text('Cdt Joueur 2'), findsNothing);
       expect(find.text('−5'), findsWidgets);
     }
 
@@ -214,6 +427,153 @@ void main() {
     noOverflow(tester.takeException(), 'duel téléphone');
   });
 
+  testWidgets('3 joueurs : un en face, deux collés en bas', (tester) async {
+    final three = GameController(
+      game: Game.start(
+        playerCount: 3,
+        names: const ['Ana', 'Bo', 'Célia'],
+      ),
+    );
+    addTearDown(three.dispose);
+
+    Future<void> expectFacing(Size size) async {
+      await pumpTable(tester, size, three);
+      final error = tester.takeException();
+      if (error != null) {
+        final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
+        expect(tiny, isTrue, reason: '$size : $error');
+      }
+      final finder = find.byType(PlayerPanel);
+      expect(finder, findsNWidgets(3));
+      final rects = [
+        for (var i = 0; i < 3; i++) tester.getRect(finder.at(i)),
+      ]..sort((a, b) => a.top.compareTo(b.top));
+      final top = rects.first;
+      final lower = rects.sublist(1)..sort((a, b) => a.left.compareTo(b.left));
+      expect(top.bottom, lessThanOrEqualTo(lower[0].top));
+      expect(lower[1].top, closeTo(lower[0].top, 2));
+      expect((lower[1].left - lower[0].right).abs(), lessThan(2));
+      expect(top.left, closeTo(lower[0].left, 2));
+      expect(top.right, closeTo(lower[1].right, 2));
+    }
+
+    await expectFacing(const Size(360, 800));
+    await expectFacing(const Size(800, 360));
+    await expectFacing(const Size(1280, 800));
+  });
+
+  testWidgets('3 joueurs : table ronde sur grand écran', (tester) async {
+    final three = GameController(
+      game: Game.start(
+        playerCount: 3,
+        names: const ['Ana', 'Bo', 'Célia'],
+      ),
+    );
+    addTearDown(three.dispose);
+
+    await pumpTable(tester, const Size(360, 800), three);
+    await tester.tap(find.byTooltip('Disposition de l’écran'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Table ronde'), findsNothing);
+    await tester.tapAt(const Offset(8, 700));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await pumpTable(tester, const Size(1280, 800), three);
+    await tester.tap(find.byTooltip('Disposition de l’écran'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Table ronde'), findsOneWidget);
+    await tester.tap(find.text('Table ronde'));
+    await tester.pump();
+    final error = tester.takeException();
+    if (error != null) {
+      final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
+      expect(tiny, isTrue, reason: '$error');
+    }
+    expect(find.text('Ana'), findsWidgets);
+    expect(find.text('Bo'), findsWidgets);
+    expect(find.text('Célia'), findsWidgets);
+    expect(find.text('Mes PV'), findsWidgets);
+    expect(find.text('Cdt'), findsWidgets);
+    expect(find.text('Cdt Bo'), findsNothing);
+    final minus = find.text('−');
+    expect(minus, findsWidgets);
+    var changed = false;
+    for (var i = 0; i < tester.widgetList(minus).length; i++) {
+      await tester.tap(minus.at(i), warnIfMissed: false);
+      await tester.pump();
+      if (three.game.players.any((player) => player.life != 40)) {
+        changed = true;
+        break;
+      }
+    }
+    expect(changed, isTrue);
+  });
+
+  testWidgets('3 joueurs : liste droite selon l’écran', (tester) async {
+    final three = GameController(
+      game: Game.start(
+        playerCount: 3,
+        names: const ['Ana', 'Bo', 'Célia'],
+      ),
+    );
+    addTearDown(three.dispose);
+
+    Future<void> openLine(Size size) async {
+      await pumpTable(tester, size, three);
+      await tester.tap(find.byTooltip('Disposition de l’écran'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+
+    await openLine(const Size(360, 800));
+    expect(find.text('Liste droite'), findsNothing);
+    await tester.tapAt(const Offset(8, 700));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    await openLine(const Size(1280, 800));
+    expect(find.text('Liste droite'), findsOneWidget);
+    await tester.tap(find.text('Liste droite'));
+    await tester.pump();
+    final wideError = tester.takeException();
+    if (wideError != null) {
+      expect(
+        RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$wideError'),
+        isTrue,
+        reason: '$wideError',
+      );
+    }
+    final ana = tester.getCenter(find.text('Ana').first);
+    final bo = tester.getCenter(find.text('Bo').first);
+    final celia = tester.getCenter(find.text('Célia').first);
+    expect(bo.dx, greaterThan(ana.dx + 200));
+    expect(celia.dx, greaterThan(bo.dx + 200));
+    expect((ana.dy - bo.dy).abs(), lessThan(80));
+
+    await openLine(const Size(800, 1280));
+    final lineItems = find.text('Liste droite');
+    expect(lineItems, findsWidgets);
+    await tester.tap(lineItems.last);
+    await tester.pump();
+    final tallError = tester.takeException();
+    if (tallError != null) {
+      expect(
+        RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$tallError'),
+        isTrue,
+        reason: '$tallError',
+      );
+    }
+    final top = tester.getCenter(find.text('Ana').first);
+    final mid = tester.getCenter(find.text('Bo').first);
+    final bottom = tester.getCenter(find.text('Célia').first);
+    expect(mid.dy, greaterThan(top.dy + 200));
+    expect(bottom.dy, greaterThan(mid.dy + 200));
+    expect((top.dx - mid.dx).abs(), lessThan(80));
+  });
+
   testWidgets('un toucher sur le commandant inflige 1 et retire 1 vie', (
     tester,
   ) async {
@@ -228,7 +588,16 @@ void main() {
     final ana = controller.game.players[0];
     final kraum = controller.game.players[1].commanders[0];
     final before = controller.playerById(ana.id).life;
-    // − enlève 1 point de commandant et 1 vie.
+    final anaPanel = find.ancestor(
+      of: find.text('Ana'),
+      matching: find.byType(PlayerPanel),
+    ).first;
+    await tester.tap(find.descendant(of: anaPanel, matching: find.text('Cdt')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Cdt Bo · Kraum'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
     await tester.tap(find.byKey(ValueKey('chip-minus-${ana.id}-${kraum.id}')));
     await tester.pump();
     expect(controller.playerById(ana.id).life, before - 1);
@@ -266,7 +635,6 @@ void main() {
       expect(controller.playerById(j1.id).life, beforeJ1 - 1);
       expect(controller.playerById(j2.id).life, beforeJ2);
       expect(controller.playerById(j1.id).damageTaken[cdt2.id], 1);
-      expect(find.textContaining('1/21 · vie'), findsWidgets);
   });
 
   testWidgets('zone dangereuse colore les PV bas', (tester) async {
@@ -288,7 +656,7 @@ void main() {
           )
           .first,
     );
-    expect(lifeText.style?.color, dangerCrit);
+    expect(lifeText.style?.color, lifeBandColor(LifeBand.critical));
     expect(tester.takeException(), isNull);
   });
 
@@ -376,7 +744,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Joueurs (2–8)'), findsOneWidget);
+    expect(find.text('Joueurs (2–12)'), findsOneWidget);
     expect(find.byKey(const ValueKey('player-count-2')), findsOneWidget);
     expect(find.byKey(const ValueKey('player-count-1')), findsNothing);
     expect(find.byKey(const ValueKey('player-count-8')), findsOneWidget);
@@ -518,7 +886,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.byIcon(Icons.info_outline));
       await tester.pumpAndSettle();
-      expect(find.text(message), findsOneWidget);
+      expect(find.text('Commander (EDH). $message'), findsOneWidget);
       expect(find.text('Compris'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Compris'));
@@ -557,16 +925,88 @@ void main() {
     );
     await tester.tap(find.byIcon(Icons.info_outline));
     await tester.pumpAndSettle();
-    expect(find.text(message), findsOneWidget);
+    expect(find.text('Monarque. $message'), findsOneWidget);
     expect(
       find.ancestor(
-        of: find.text(message),
+        of: find.text('Monarque. $message'),
         matching: find.byWidgetPredicate(
           (widget) => widget is RotatedBox && widget.quarterTurns == 2,
         ),
       ),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('3 joueurs choisissent le commandant qui les attaque', (
+    tester,
+  ) async {
+    final three = GameController(
+      game: Game.start(
+        playerCount: 3,
+        names: const ['Ana', 'Bo', 'Celia'],
+      ),
+    );
+    addTearDown(three.dispose);
+    await pumpTable(tester, const Size(1280, 800), three);
+    expect(find.text('Cdt'), findsWidgets);
+    expect(find.text('Cdt Celia'), findsNothing);
+    expect(find.byType(CommanderEmblem), findsWidgets);
+    expect(find.text('2e'), findsNothing);
+    final anaPanel = find.ancestor(
+      of: find.text('Ana'),
+      matching: find.byType(PlayerPanel),
+    ).first;
+    await tester.tap(
+      find.descendant(of: anaPanel, matching: find.text('Cdt')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Cdt Celia'), findsOneWidget);
+    await tester.tap(find.text('Cdt Celia'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.textContaining('Cdt Celia'), findsOneWidget);
+    expect(find.text('Cdt Bo'), findsNothing);
+    expect(find.byIcon(Icons.visibility), findsNothing);
+  });
+
+  testWidgets('la couronne inscrit deux commandants', (tester) async {
+    final three = GameController(
+      game: Game.start(
+        playerCount: 3,
+        names: const ['Ana', 'Bo', 'Celia'],
+      ),
+    );
+    addTearDown(three.dispose);
+    await pumpTable(tester, const Size(1280, 800), three);
+    final anaPanel = find
+        .ancestor(of: find.text('Ana'), matching: find.byType(PlayerPanel))
+        .first;
+    await tester.tap(
+      find.descendant(of: anaPanel, matching: find.byType(CommanderEmblem)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Mon commandant'), findsOneWidget);
+    await tester.tap(find.text('Deux'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).first, 'Atraxa');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    final ana = three.game.players.firstWhere((player) => player.name == 'Ana');
+    expect(ana.commanders, hasLength(2));
+    expect(ana.commanders[0].name, 'Atraxa');
+    expect(ana.commanders[1].name, 'Cdt 2');
+    final boPanel = find
+        .ancestor(of: find.text('Bo'), matching: find.byType(PlayerPanel))
+        .first;
+    await tester.tap(find.descendant(of: boPanel, matching: find.text('Cdt')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Cdt Ana · Atraxa'), findsOneWidget);
+    expect(find.text('Cdt Ana · 2'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -674,110 +1114,128 @@ void main() {
         selfScoring: true,
       );
       final panel = find.ancestor(
-        of: find.byKey(ValueKey('pane-${first.id}')),
+        of: find.byKey(ValueKey('life-pad-${first.id}-${first.id}')),
         matching: find.byType(PlayerPanel),
       );
       expect(
-        find.descendant(of: panel, matching: find.text('Monarque')),
+        find.descendant(of: panel, matching: find.bySemanticsLabel('Monarque')),
         findsWidgets,
       );
       expect(
-        find.descendant(of: panel, matching: find.text('☠ 3')),
+        find.descendant(of: panel, matching: find.bySemanticsLabel('Poison 3')),
         findsWidgets,
       );
       expect(
-        find.descendant(of: panel, matching: find.text('Énergie 2')),
+        find.descendant(
+          of: panel,
+          matching: find.bySemanticsLabel('Énergie 2'),
+        ),
         findsWidgets,
       );
       expect(
-        find.descendant(of: panel, matching: find.text('U 4')),
+        find.descendant(
+          of: panel,
+          matching: find.bySemanticsLabel('Mana bleu 4'),
+        ),
         findsWidgets,
       );
       expect(
-        find.descendant(of: panel, matching: find.text('Indices 2')),
+        find.descendant(of: panel, matching: find.bySemanticsLabel('Indices 2')),
         findsWidgets,
       );
       expect(tester.takeException(), isNull);
     }
   });
 
-  testWidgets('chaque profil choisit son affichage', (tester) async {
-    final controller = sample();
-    addTearDown(controller.dispose);
-    await pumpTable(tester, const Size(1280, 800), controller);
-    final ana = controller.game.players.first;
-    final bo = controller.game.players[1];
-    Finder panel(String id) => find.ancestor(
-      of: find.byKey(ValueKey('pane-$id')),
-      matching: find.byType(PlayerPanel),
-    );
-
-    await tester.tap(find.byKey(ValueKey('pane-${ana.id}')));
-    await tester.pumpAndSettle();
-    expect(find.text('Enregistrer pour Ana'), findsOneWidget);
-    await tester.tap(find.text('Mes pertes'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 2700));
-
-    expect(
-      find.descendant(of: panel(ana.id), matching: find.text('Reçu')),
-      findsWidgets,
-    );
-    expect(
-      find.descendant(of: panel(ana.id), matching: find.text('Infligé')),
-      findsNothing,
-    );
-    expect(
-      find.descendant(of: panel(bo.id), matching: find.text('Infligé')),
-      findsWidgets,
-    );
-    expect(
-      find.descendant(of: panel(bo.id), matching: find.text('Reçu')),
-      findsNothing,
-    );
-
-    await tester.tap(find.byKey(ValueKey('pane-${ana.id}')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Enregistrer pour Ana'));
-    await tester.pump();
-    expect(find.textContaining('Préférence enregistrée pour Ana'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('l’affichage du téléphone se règle et reste remplaçable', (
+  testWidgets('les réglages de la table s’ouvrent sans choix d’affichage', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    AppSettings current = AppSettings.defaults;
+    final current = AppSettings.defaults;
     await tester.pumpWidget(
       MaterialApp(
         theme: buildTheme(),
         home: Scaffold(
           body: SettingsSheet(
             settings: current,
-            onChanged: (next) => current = next,
+            onChanged: (_) {},
+            cast: CastTone.standard,
+            onCast: (_) {},
           ),
         ),
       ),
     );
     await tester.pump();
-    expect(tester.takeException(), isNull);
+    expect(find.text('Affichage des points'), findsNothing);
+    expect(find.text('Mes pertes'), findsNothing);
+    expect(find.text('Adversaires'), findsNothing);
     await tester.scrollUntilVisible(
-      find.text('Mes pertes'),
+      find.text('Mémoire des commandants'),
       120,
       scrollable: find.byType(Scrollable),
     );
-    await tester.pump();
+    expect(find.text('Mémoire des commandants'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Mes pertes'));
+  });
+
+  testWidgets('un téléphone relié donne l’écran à son siège', (tester) async {
+    final controller = sample();
+    addTearDown(controller.dispose);
+    final link = TableLinkController();
+    addTearDown(link.stop);
+    await tester.runAsync(() => link.hostTable(controller.exportSession()));
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    Future<void> show() {
+      return tester.pumpWidget(
+        MaterialApp(
+          home: TableScreen(
+            controller: controller,
+            settings: AppSettings.defaults.copyWith(
+              haptic: false,
+              beginnerTips: false,
+            ),
+            onSettings: (_) {},
+            onLeave: () {},
+            onCoachDismissed: () {},
+            link: link,
+          ),
+        ),
+      );
+    }
+
+    await show();
     await tester.pump();
-    expect(current.scorePane, ScorePane.own);
-    expect(current.paneNamed('Yann'), ScorePane.own);
-    current = current.savingPane('Yann', ScorePane.foes);
-    expect(current.paneNamed('Yann'), ScorePane.foes);
-    expect(current.paneNamed('Bo'), ScorePane.own);
+    expect(find.text('Ce téléphone joue quel siège ?'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('C’est moi').first);
+    await tester.pump();
+    expect(find.text('Mes PV'), findsOneWidget);
+    final bo = controller.game.players[1].id;
+    expect(find.byKey(ValueKey('rail-$bo')), findsOneWidget);
+    expect(find.text('Bo'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.text('Bo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Mes PV'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    tester.view.physicalSize = const Size(800, 360);
+    await tester.pump();
+    expect(find.text('Mes PV'), findsWidgets);
+    expect(find.byKey(ValueKey('rail-$bo')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

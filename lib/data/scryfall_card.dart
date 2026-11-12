@@ -9,6 +9,7 @@ class ScryfallCard {
     required this.isCreature,
     this.id,
     this.manaCost = '',
+    this.cmc = 0,
     this.printedName,
     this.printedText,
     this.artUrl,
@@ -27,6 +28,7 @@ class ScryfallCard {
   final bool isLand;
   final bool isCreature;
   final String manaCost;
+  final int cmc;
   final String? printedName;
   final String? printedText;
   final String? artUrl;
@@ -133,6 +135,7 @@ class ScryfallCard {
       isLand: lower.contains('land') || lower.contains('terrain'),
       isCreature: lower.contains('creature') || lower.contains('créature'),
       manaCost: mana,
+      cmc: (json['cmc'] as num?)?.round() ?? 0,
       printedName: json['printed_name'] as String?,
       printedText: json['printed_text'] as String?,
       artUrl: isTrustedImageUrl(art) ? art : null,

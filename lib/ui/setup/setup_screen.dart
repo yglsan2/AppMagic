@@ -21,6 +21,7 @@ class SetupScreen extends StatefulWidget {
     required this.onOpenSearch,
     required this.onOpenStats,
     required this.onImportSession,
+    this.onJoinTable,
     required this.onOpenNight,
     required this.onOpenPrivacy,
     this.nightLabel,
@@ -39,6 +40,7 @@ class SetupScreen extends StatefulWidget {
   final VoidCallback onOpenNight;
   final VoidCallback onOpenPrivacy;
   final Future<bool> Function(Map<String, dynamic> session) onImportSession;
+  final Future<void> Function()? onJoinTable;
   final List<PlayerProfile> profiles;
   final Future<void> Function(PlayerProfile profile)? onSaveProfile;
 
@@ -129,7 +131,7 @@ class _SetupScreenState extends State<SetupScreen> {
         ),
       );
     }
-    while (_drafts.length < 8) {
+    while (_drafts.length < maxTablePlayers) {
       final index = _drafts.length;
       _drafts.add(
         _DraftPlayer(
@@ -266,7 +268,9 @@ class _SetupScreenState extends State<SetupScreen> {
       turnAlertSeconds: widget.settings.turnAlertSeconds,
       timerMode: widget.settings.timerMode,
       timersEnabled: widget.settings.timersEnabled,
+      tournament: widget.settings.tournament,
       chessBankSeconds: widget.settings.chessBankSeconds,
+      chessBonusSeconds: widget.settings.chessBonusSeconds,
       planechase: _planechase,
       archenemy: _archenemy,
       bounty: _bounty,
@@ -910,9 +914,20 @@ class _SetupScreenState extends State<SetupScreen> {
                   ),
                 ),
               ),
+              if (widget.onJoinTable != null) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: widget.onJoinTable,
+                  icon: const Icon(Icons.wifi_tethering),
+                  label: const Text('Rejoindre une table LifeStack'),
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
-                'Pendant la partie, Transférer (QR) envoie la table sur un autre téléphone.',
+                'Un seul écran suffit. Pour brancher d’autres téléphones '
+                'avec LifeStack : lancez la partie, puis les deux mains '
+                'qui se serrent, en haut. '
+                'Ou rejoignez une table déjà ouverte.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 
 Future<String?> askName(
   BuildContext context, {
@@ -6,8 +7,8 @@ Future<String?> askName(
   String initial = '',
   String hint = '',
 }) {
-  return showDialog<String>(
-    context: context,
+  return showSeatDialog<String>(
+    context,
     builder: (context) =>
         _NameDialog(title: title, initial: initial, hint: hint),
   );
@@ -69,8 +70,8 @@ Future<bool> confirmAction(
   required String message,
   String confirmLabel = 'Confirmer',
 }) async {
-  final result = await showDialog<bool>(
-    context: context,
+  final result = await showSeatDialog<bool>(
+    context,
     builder: (context) => AlertDialog(
       title: Text(title),
       content: Text(message),

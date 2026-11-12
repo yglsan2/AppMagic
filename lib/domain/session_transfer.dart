@@ -50,7 +50,8 @@ Map<String, dynamic>? decodeSessionTransfer(String input) {
     List<int> raw;
     try {
       raw = GZipDecoder().decodeBytes(bytes);
-    } on Object {
+    } on Object catch (error) {
+      AppLog.warn('decodeSessionTransfer: gzip illisible, essai brut · $error');
       raw = bytes;
     }
     if (raw.length > maxTransferRawBytes) {

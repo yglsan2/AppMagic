@@ -28,6 +28,7 @@ void main() {
     final game = Game.start(
       playerCount: 2,
       timerMode: TimerMode.chess,
+      timersEnabled: true,
       chessBankSeconds: 120,
     );
     final controller = GameController(game: game);

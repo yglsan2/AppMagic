@@ -216,6 +216,7 @@ class _CardJournalSheetState extends State<CardJournalSheet> {
         sourcePlayerId: source,
         cardName: card.displayName,
         cardTypeLine: card.typeLine,
+        manaValue: card.cmc,
         oracleText: card.effectText,
         artUrl: card.artUrl,
         scryfallId: card.id,

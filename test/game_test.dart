@@ -25,6 +25,19 @@ void main() {
     );
   }
 
+  test('sans fin de tour, une perte éclaire ce joueur', () {
+    final game = pod();
+    game.noEndTurn = true;
+    final victim = game.game.players[2];
+    game.addLife(victim.id, -3);
+    expect(game.game.activeIndex, 2);
+    game.addLife(victim.id, 1);
+    expect(game.game.activeIndex, 2);
+    game.noEndTurn = false;
+    game.addLife(game.game.players[1].id, -1);
+    expect(game.game.activeIndex, 2);
+  });
+
   test('un dégât de commandant retire 1 point de vie', () {
     final game = pod();
     final defender = game.game.players[0];
@@ -139,6 +152,31 @@ void main() {
     expect(game.game.isDefeated(after), isTrue);
   });
 
+  test('la couronne nomme un ou deux commandants', () {
+    final game = pod(players: 2);
+    final owner = game.game.players[0];
+    final defender = game.game.players[1];
+    game.setMyCommanders(owner.id, names: const ['', '']);
+    expect(owner.commanders, hasLength(2));
+    expect(commanderChipLabel(owner, owner.commanders[0]), 'Cdt P0 · 1');
+    expect(commanderChipLabel(owner, owner.commanders[1]), 'Cdt P0 · 2');
+    game.setMyCommanders(owner.id, names: const ['Kraum']);
+    expect(owner.commanders, hasLength(1));
+    expect(commanderChipLabel(owner, owner.commanders.first), 'Cdt Kraum');
+    final life = defender.life;
+    final poison = defender.poison;
+    game.addCommanderDamage(
+      defenderId: defender.id,
+      commanderId: owner.commanders.first.id,
+      delta: 3,
+    );
+    final hit = game.playerById(defender.id);
+    expect(hit.life, life - 3);
+    expect(hit.poison, poison);
+    expect(hit.damageTaken[owner.commanders.first.id], 3);
+    expect(game.game.commanderLethal(hit), isFalse);
+  });
+
   test('changer le nombre de joueurs ajoute et retire', () {
     final game = pod(players: 4);
     game.setPlayerCount(6);
@@ -179,6 +217,27 @@ void main() {
     expect(game.playerById(owner.id).commanders, hasLength(1));
     game.removeLastCommander(owner.id);
     expect(game.playerById(owner.id).commanders, hasLength(1));
+  });
+
+  test('la revanche immediate remet les compteurs et la main au perdant', () {
+    final game = pod();
+    final loser = game.game.players[2];
+    final commander = game.game.players[0].commanders.first;
+    game.setActive(0);
+    game.addCommanderDamage(
+      defenderId: loser.id,
+      commanderId: commander.id,
+      delta: 21,
+    );
+    game.bumpStat(loser.id, Stat.poison, 4);
+    game.revenge();
+    final back = game.playerById(loser.id);
+    expect(back.life, 40);
+    expect(back.poison, 0);
+    expect(back.damageTaken[commander.id] ?? 0, 0);
+    expect(game.game.commanderRemaining(back, commander.id), 21);
+    expect(game.game.players[game.game.activeIndex].id, loser.id);
+    expect(game.game.roundNumber, 2);
   });
 
   test('revanche remonte la manche sans changer le siège actif', () {
@@ -551,14 +610,45 @@ void main() {
     expect(controller.game.timersEnabled, isFalse);
   });
 
+  test('annuler retire l’événement, rétablir le remet', () {
+    final game = pod();
+    final id = game.game.players.first.id;
+    game.addLife(id, -3);
+    expect(game.lifeLog.first.retracted, isFalse);
+    expect(game.lifeLog.first.story, contains('-3'));
+    game.undo();
+    expect(game.playerById(id).life, 40);
+    expect(game.lifeLog.first.retracted, isTrue);
+    expect(game.lifeLog.first.story, contains('annulé'));
+    game.redo();
+    expect(game.playerById(id).life, 37);
+    expect(game.lifeLog.first.retracted, isFalse);
+  });
+
+  test('la table accepte douze joueurs', () {
+    final game = pod();
+    game.setPlayerCount(12);
+    expect(game.game.players.length, 12);
+    game.setPlayerCount(20);
+    expect(game.game.players.length, 12);
+  });
+
   test('une préférence d’affichage suit le pseudo', () {
     final saved = AppSettings.defaults.savingPane('Yann', ScorePane.own);
     expect(saved.paneNamed('yann'), ScorePane.own);
-    expect(saved.paneNamed('Bo'), ScorePane.foes);
+    expect(saved.paneNamed('Bo'), ScorePane.own);
     final replaced = saved.savingPane('YANN', ScorePane.both);
     expect(replaced.namedPanes.length, 1);
     expect(replaced.paneNamed('Yann'), ScorePane.both);
-    expect(replaced.forgettingPane('yann').paneNamed('Yann'), ScorePane.foes);
+    expect(replaced.forgettingPane('yann').paneNamed('Yann'), ScorePane.own);
+    expect(AppSettings.fromJson({'scorePane': 'foes'}).scorePane, ScorePane.own);
+    expect(
+      AppSettings.fromJson({
+        'scorePane': 'foes',
+        'scorePaneChosen': true,
+      }).scorePane,
+      ScorePane.foes,
+    );
     final phone = AppSettings.defaults.copyWith(scorePane: ScorePane.own);
     expect(phone.paneNamed('Inconnu'), ScorePane.own);
     final kept = phone.savingPane('Yann', ScorePane.foes);
@@ -568,5 +658,65 @@ void main() {
       'namedPanes': {'Yann': 'own'},
     });
     expect(legacy.paneNamed('Yann'), ScorePane.own);
+  });
+
+  test('la bénédiction ne se retire pas', () {
+    final game = pod();
+    final id = game.game.players[0].id;
+    game.toggleBlessing(id);
+    expect(game.playerById(id).blessing, isTrue);
+    game.toggleBlessing(id);
+    expect(game.playerById(id).blessing, isTrue);
+    game.undo();
+    expect(game.playerById(id).blessing, isFalse);
+  });
+
+  test('une seule hausse de vitesse par tour', () {
+    final game = pod();
+    final id = game.game.players[0].id;
+    game.bumpStat(id, Stat.speed, 1);
+    game.bumpStat(id, Stat.speed, 1);
+    expect(game.playerById(id).speed, 1);
+    game.nextTurn();
+    game.bumpStat(id, Stat.speed, 1);
+    expect(game.playerById(id).speed, 2);
+  });
+
+  test('l’initiative se demande sur une perte de vie', () {
+    final game = pod();
+    final holder = game.game.players[0];
+    final attacker = game.game.players[1];
+    game.toggleInitiative(holder.id);
+    game.addLife(holder.id, -1, dealtBy: attacker.id);
+    expect(game.combatAsk, isNotNull);
+    game.answerCombat(null);
+    expect(game.game.initiativeId, holder.id);
+    game.nextTurn();
+    game.addLife(holder.id, -1, dealtBy: attacker.id);
+    game.answerCombat(attacker.id);
+    expect(game.game.initiativeId, attacker.id);
+  });
+
+  test('s’enfoncer dans le donjon suit les portes', () {
+    final game = pod();
+    final id = game.game.players[0].id;
+    game.enterDungeon(id, 'mine');
+    expect(game.playerById(id).roomId, 'entrance');
+    game.venture(id, 'goblins');
+    expect(game.playerById(id).roomId, 'goblins');
+    game.toggleInitiative(id);
+    game.toggleInitiative(id);
+    expect(game.playerById(id).roomId, 'goblins');
+  });
+
+  test('2HG préfixe le camp', () {
+    final game = Game.start(
+      format: MatchFormat.twoHeaded,
+      playerCount: 4,
+      names: const ['A1', 'A2', 'B1', 'B2'],
+      sharedLife: true,
+    );
+    expect(seatTitle(game, game.players[0]), 'Éq.1 · A1');
+    expect(seatTitle(game, game.players[2]), 'Éq.2 · B1');
   });
 }

@@ -42,9 +42,11 @@ class _PrivacySheet extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'LifeStack fonctionne sans compte et sans serveur propre. '
-          'Les données restent sur cet appareil, sauf quand vous cherchez '
-          'une carte ou une illustration sur Scryfall.',
+          'LifeStack fonctionne sans compte. '
+          'La partie sur un seul téléphone, ou entre téléphones du même lieu, '
+          'reste sur les appareils. Le salon en ligne est un choix : '
+          'les noms et les scores partent chiffrés, et le code du salon est la clé. '
+          'La recherche de carte passe par Scryfall.',
           style: TextStyle(color: Colors.white.withValues(alpha: 0.75)),
         ),
         const SizedBox(height: 16),
@@ -66,7 +68,10 @@ class _PrivacySheet extends StatelessWidget {
           title: 'Réseau',
           body:
               'Uniquement vers api.scryfall.com (HTTPS) lorsque vous cherchez '
-              'une carte ou une illustration. Aucune télémétrie publicitaire.',
+              'une carte ou une illustration. Le salon en ligne, si vous l’ouvrez, '
+              'envoie la table chiffrée à un relais (HiveMQ, ou EMQX s’il ne répond pas) '
+              'le temps de la relier. Le relais ne reçoit pas le texte de la partie : '
+              'le code saisi à la table est la clé. Aucune télémétrie publicitaire.',
         ),
         const _Block(
           title: 'Bases légales (app locale)',
@@ -79,16 +84,32 @@ class _PrivacySheet extends StatelessWidget {
           body:
               'Accès et portabilité : export QR / code MTGS1 et MTGN1, '
               'récaps texte.\n'
-              'Effacement : boutons ci-dessous.\n'
-              'Opposition : désactivez le journal Scryfall et la recherche '
-              'cartes si vous ne souhaitez pas d’appels réseau.',
+              'Effacement : boutons ci-dessous. Les données restent jusqu’à '
+              'ce que vous les effaciez, ou que vous désinstalliez l’application.\n'
+              'Opposition : n’ouvrez pas le salon en ligne, et n’utilisez pas '
+              'la recherche de cartes, si vous ne voulez aucun appel réseau.\n'
+              'Pas de profilage, pas de publicité, pas de revente.',
         ),
         const _Block(
-          title: 'Accessibilité (RGAA — état)',
+          title: 'Accessibilité (RGAA)',
           body:
-              'Texte en français. La taille suit celle du téléphone, dans une '
-              'limite lisible à table. Contraste élevé sur fond sombre, '
-              'et un libellé sur les actions principales.',
+              'L’interface est en français. Le texte suit la taille choisie '
+              'dans le système, dans une limite encore lisible à table. '
+              'Le fond est sombre, les chiffres restent clairs, et les '
+              'actions principales ont un nom (pas seulement une icône). '
+              'LifeStack n’a pas passé d’audit RGAA et ne déclare pas '
+              'une conformité officielle.',
+        ),
+        const _Block(
+          title: 'Magic et responsabilité',
+          body:
+              'LifeStack est écrit par DesertYGL et publié sous la GNU GPL '
+              'version 3, sans garantie. Magic: The Gathering, les cartes, '
+              'les images et les règles appartiennent à Wizards of the Coast. '
+              'Ce compteur n’est pas officiel. DesertYGL n’est pas responsable '
+              'd’un score faux, d’une partie, d’un tournoi, d’un réseau, '
+              'de Scryfall, des relais du salon, ni de l’usage que vous '
+              'en faites.',
         ),
         const SizedBox(height: 12),
         if (onClearCacheOnly != null)

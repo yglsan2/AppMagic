@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:mtg_table/data/app_log.dart';
 import 'package:mtg_table/domain/models.dart';
+import 'package:mtg_table/domain/session_transfer.dart';
 
 class ArchivedGame {
   const ArchivedGame({
@@ -94,6 +96,22 @@ class PlayerRecord {
   });
 
   final String name;
+  final int games;
+  final int wins;
+
+  double get winRate => games == 0 ? 0 : wins / games;
+}
+
+class CommanderRecord {
+  const CommanderRecord({
+    required this.commander,
+    required this.owner,
+    required this.games,
+    required this.wins,
+  });
+
+  final String commander;
+  final String owner;
   final int games;
   final int wins;
 
@@ -201,6 +219,60 @@ class LocalLedger {
     return list.take(limit).toList();
   }
 
+  int? averageDurationSec() {
+    final timed = [for (final game in games) if (game.durationSec > 0) game.durationSec];
+    if (timed.isEmpty) return null;
+    final sum = timed.fold<int>(0, (total, value) => total + value);
+    return sum ~/ timed.length;
+  }
+
+  List<CommanderRecord> commanderRecords() {
+    final gamesBy = <String, int>{};
+    final winsBy = <String, int>{};
+    final label = <String, CommanderRecord>{};
+    for (final game in games) {
+      final winners = _splitWinners(game.winner);
+      for (final entry in game.commanders) {
+        final split = entry.split('·');
+        if (split.length < 2) continue;
+        final owner = split.first.trim();
+        final commander = split.sublist(1).join('·').trim();
+        if (commander.isEmpty) continue;
+        final key = commander.toLowerCase();
+        final previous = label[key];
+        label[key] = CommanderRecord(
+          commander: previous?.commander ?? commander,
+          owner: owner,
+          games: (gamesBy[key] ?? 0) + 1,
+          wins: winsBy[key] ?? 0,
+        );
+        gamesBy[key] = (gamesBy[key] ?? 0) + 1;
+        if (winners.contains(owner)) {
+          winsBy[key] = (winsBy[key] ?? 0) + 1;
+        }
+      }
+    }
+    final records = [
+      for (final entry in label.entries)
+        CommanderRecord(
+          commander: entry.value.commander,
+          owner: entry.value.owner,
+          games: gamesBy[entry.key] ?? 0,
+          wins: winsBy[entry.key] ?? 0,
+        ),
+    ]..sort((a, b) => b.games.compareTo(a.games));
+    return records;
+  }
+
+  CommanderRecord? commanderNamed(String name) {
+    final key = name.trim().toLowerCase();
+    if (key.isEmpty) return null;
+    for (final record in commanderRecords()) {
+      if (record.commander.toLowerCase() == key) return record;
+    }
+    return null;
+  }
+
   /// Export CSV (`;`) des stats locales + parties.
   String buildCsv() {
     final buf = StringBuffer();
@@ -263,9 +335,18 @@ String encodePlaygroupInvite(Playgroup group) {
 Playgroup? decodePlaygroupInvite(String input) {
   final trimmed = input.trim();
   if (!trimmed.startsWith('TABLEMTG1.')) return null;
+  if (trimmed.length > maxTransferInputChars) {
+    AppLog.warn('decodePlaygroupInvite: entrée trop longue');
+    return null;
+  }
   try {
     final payload = trimmed.substring('TABLEMTG1.'.length);
-    final json = jsonDecode(utf8.decode(base64Url.decode(payload)));
+    final bytes = base64Url.decode(payload);
+    if (bytes.length > maxTransferCompressedBytes) {
+      AppLog.warn('decodePlaygroupInvite: payload trop gros');
+      return null;
+    }
+    final json = jsonDecode(utf8.decode(bytes));
     if (json is Map<String, dynamic>) return Playgroup.fromJson(json);
     if (json is Map) {
       return Playgroup.fromJson(Map<String, dynamic>.from(json));

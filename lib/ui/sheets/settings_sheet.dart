@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/models.dart';
+import 'package:mtg_table/ui/widgets/finale_fx.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
 
 Future<void> showSettingsSheet(
   BuildContext context, {
   required AppSettings settings,
   required ValueChanged<AppSettings> onChanged,
+  required CastTone? cast,
+  required ValueChanged<CastTone> onCast,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -13,7 +16,12 @@ Future<void> showSettingsSheet(
     builder: (context) {
       return SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.8,
-        child: SettingsSheet(settings: settings, onChanged: onChanged),
+        child: SettingsSheet(
+          settings: settings,
+          onChanged: onChanged,
+          cast: cast,
+          onCast: onCast,
+        ),
       );
     },
   );
@@ -24,10 +32,14 @@ class SettingsSheet extends StatefulWidget {
     super.key,
     required this.settings,
     required this.onChanged,
+    required this.cast,
+    required this.onCast,
   });
 
   final AppSettings settings;
   final ValueChanged<AppSettings> onChanged;
+  final CastTone? cast;
+  final ValueChanged<CastTone> onCast;
 
   @override
   State<SettingsSheet> createState() => _SettingsSheetState();
@@ -35,10 +47,60 @@ class SettingsSheet extends StatefulWidget {
 
 class _SettingsSheetState extends State<SettingsSheet> {
   late AppSettings _settings = widget.settings;
+  late CastTone? _cast = widget.cast;
+  late final TextEditingController _lifeLine = TextEditingController(
+    text: _shownLife(widget.settings),
+  );
+  late final TextEditingController _poisonLine = TextEditingController(
+    text: widget.settings.epitaphPoison,
+  );
+  late final TextEditingController _commanderLine = TextEditingController(
+    text: widget.settings.epitaphCommander,
+  );
+  late final TextEditingController _leaveLine = TextEditingController(
+    text: widget.settings.epitaphLeave,
+  );
+  late final TextEditingController _winLine = TextEditingController(
+    text: widget.settings.epitaphWin,
+  );
+
+  static String _shownLife(AppSettings settings) {
+    if (settings.epitaphLife.isNotEmpty) return settings.epitaphLife;
+    if (settings.saltLines.isEmpty) return '';
+    return settings.saltLines.first;
+  }
+
+  @override
+  void dispose() {
+    _lifeLine.dispose();
+    _poisonLine.dispose();
+    _commanderLine.dispose();
+    _leaveLine.dispose();
+    _winLine.dispose();
+    super.dispose();
+  }
 
   void _update(AppSettings next) {
     setState(() => _settings = next);
     widget.onChanged(next);
+  }
+
+  Widget _epitaphField({
+    required TextEditingController controller,
+    required String label,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+        onChanged: (value) {
+          final line = value.trim();
+          onChanged(line.length > 90 ? line.substring(0, 90) : line);
+        },
+      ),
+    );
   }
 
   Widget _help(String title, String message, Widget child) {
@@ -70,6 +132,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
             'retirés reviennent.',
           ),
         ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Sans fin de tour'),
+          subtitle: const Text(
+            'Le bouton disparaît. Un retrait de points met en évidence '
+            'le compte de celui qui les perd.',
+          ),
+          value: _settings.noEndTurn,
+          onChanged: (value) =>
+              _update(_settings.copyWith(noEndTurn: value)),
+        ),
         _help(
           'Mana en fin de tour',
           'Le mana flottant disparaît à l’étape de nettoyage. Activé, '
@@ -96,6 +169,100 @@ class _SettingsSheetState extends State<SettingsSheet> {
                 _update(_settings.copyWith(resetStormOnTurn: value)),
           ),
         ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Tous les sons'),
+          value: _settings.sounds,
+          onChanged: (value) => _update(
+            _settings.copyWith(
+              sounds: value,
+              effectSounds: value,
+              touchSounds: value,
+            ),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Bruitages'),
+          subtitle: const Text('Coups, sorts, défaite et victoire'),
+          value: _settings.sounds && _settings.effectSounds,
+          onChanged: (value) => _update(
+            _settings.copyWith(
+              effectSounds: value,
+              sounds: value || _settings.touchSounds,
+            ),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Touches et glissements'),
+          value: _settings.sounds && _settings.touchSounds,
+          onChanged: (value) => _update(
+            _settings.copyWith(
+              touchSounds: value,
+              sounds: value || _settings.effectSounds,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Animations',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+        ),
+        const SizedBox(height: 4),
+        for (final choice in CastTone.values)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            selected: _cast == choice,
+            title: Text(
+              _cast == choice
+                  ? '${castToneLabel(choice)}  · actuel'
+                  : castToneLabel(choice),
+            ),
+            subtitle: Text(castToneHint(choice)),
+            onTap: () {
+              setState(() => _cast = choice);
+              widget.onCast(choice);
+            },
+          ),
+        if (_settings.finaleStyle == FinaleStyle.lotus) ...[
+          const SizedBox(height: 8),
+          const Text(
+            '{nom}, {vainqueur}, {perte} et {cause} se remplissent tout seuls.',
+          ),
+          const SizedBox(height: 8),
+          _epitaphField(
+            controller: _lifeLine,
+            label: 'Phrase de vie',
+            onChanged: (value) => _update(
+              _settings.copyWith(epitaphLife: value, saltLines: const []),
+            ),
+          ),
+          _epitaphField(
+            controller: _poisonLine,
+            label: 'Phrase de poison',
+            onChanged: (value) =>
+                _update(_settings.copyWith(epitaphPoison: value)),
+          ),
+          _epitaphField(
+            controller: _commanderLine,
+            label: 'Phrase de commandant',
+            onChanged: (value) =>
+                _update(_settings.copyWith(epitaphCommander: value)),
+          ),
+          _epitaphField(
+            controller: _leaveLine,
+            label: 'Phrase de départ',
+            onChanged: (value) =>
+                _update(_settings.copyWith(epitaphLeave: value)),
+          ),
+          _epitaphField(
+            controller: _winLine,
+            label: 'Phrase du vainqueur',
+            onChanged: (value) => _update(_settings.copyWith(epitaphWin: value)),
+          ),
+        ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Vibrations'),
@@ -124,59 +291,6 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onChanged: (value) =>
               _update(_settings.copyWith(showLifeFeed: value)),
         ),
-        const Text(
-          'Affichage des points',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Choix du téléphone, pour chaque joueur sans préférence à lui. '
-          'Mes pertes, les deux (mixte), ou les pertes des adversaires. '
-          'L’œil d’un profil, ou un pseudo enregistré plus bas, remplace ce choix.',
-        ),
-        const SizedBox(height: 8),
-        SegmentedButton<ScorePane>(
-          expandedInsets: EdgeInsets.zero,
-          segments: const [
-            ButtonSegment(value: ScorePane.own, label: Text('Mes pertes')),
-            ButtonSegment(value: ScorePane.both, label: Text('Les deux')),
-            ButtonSegment(
-              value: ScorePane.foes,
-              label: Text('Adversaires'),
-            ),
-          ],
-          selected: {_settings.scorePane},
-          onSelectionChanged: (selection) =>
-              _update(_settings.copyWith(scorePane: selection.first)),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Préférences par pseudo',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          _settings.namedPanes.isEmpty
-              ? 'Aucune préférence enregistrée. Ces joueurs suivent '
-                  'l’affichage du téléphone. Sur un profil, l’œil '
-                  'à côté de la roue crantée peut en choisir un autre, '
-                  'puis « Enregistrer pour ce pseudo ».'
-              : 'Au prochain passage de ce pseudo, son affichage remplace '
-                  'celui du téléphone. On peut toujours le changer '
-                  'pendant la partie.',
-        ),
-        for (final entry in _settings.namedPanes.entries)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(entry.key),
-            subtitle: Text(scorePaneLabel(entry.value)),
-            trailing: IconButton(
-              tooltip: 'Oublier ${entry.key}',
-              onPressed: () => _update(_settings.forgettingPane(entry.key)),
-              icon: const Icon(Icons.delete_outline),
-            ),
-          ),
-        const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Mémoire des commandants'),
@@ -225,6 +339,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
           onSelectionChanged: (selection) =>
               _update(_settings.copyWith(viewMode: selection.first)),
         ),
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Noms sous les logos'),
+          subtitle: const Text(
+            'Sans nom, les symboles seuls, y compris le soleil et la lune '
+            'au centre. Avec le nom, chaque logo est légendé.',
+          ),
+          value: _settings.optionNames,
+          onChanged: (value) =>
+              _update(_settings.copyWith(optionNames: value)),
+        ),
         const SizedBox(height: 6),
         Text(
           'Gros plan : un joueur en grand. Le bandeau change de joueur sans passer le tour.',
@@ -261,6 +387,17 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         ),
         const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Mode tournoi'),
+          subtitle: const Text(
+            'Le compteur et l’horloge, si elle est allumée, restent visibles. '
+            'Le journal, la recherche de carte et les conseils de deck sont fermés '
+            'pendant le match. L’arbitre peut interdire les appareils.',
+          ),
+          value: _settings.tournament,
+          onChanged: (value) => _update(_settings.copyWith(tournament: value)),
+        ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Chronomètre'),
@@ -324,7 +461,8 @@ class _SettingsSheetState extends State<SettingsSheet> {
           ),
         ] else ...[
           Text(
-            'Chaque joueur a une banque. Elle diminue pendant son tour.',
+            'Chaque joueur a une banque pour ses tours. '
+            'Le dépassement reste en négatif. Les secondes bonus reviennent en fin de tour.',
             style: TextStyle(
               fontSize: 13,
               color: Colors.white.withValues(alpha: 0.55),
@@ -341,6 +479,22 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   selected: _settings.chessBankSeconds == seconds,
                   onSelected: (_) =>
                       _update(_settings.copyWith(chessBankSeconds: seconds)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text('Secondes rendues à chaque fin de tour'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final seconds in const [0, 10, 15, 30])
+                ChoiceChip(
+                  label: Text(seconds == 0 ? 'Aucune' : '+$seconds s'),
+                  selected: _settings.chessBonusSeconds == seconds,
+                  onSelected: (_) =>
+                      _update(_settings.copyWith(chessBonusSeconds: seconds)),
                 ),
             ],
           ),

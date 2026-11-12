@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 
 enum LifeLogTab { life, commander }
 
@@ -12,9 +13,8 @@ Future<void> showLifeLogSheet(
   LifeLogTab initialTab = LifeLogTab.life,
   String? commanderId,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
+  return presentForSeat<void>(
+    context,
     builder: (context) {
       return SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.75,

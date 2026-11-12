@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/game_controller.dart';
+import 'package:mtg_table/domain/planar_decks.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 
 Future<void> showDiceSheet(BuildContext context, GameController controller) {
@@ -53,28 +54,12 @@ class _DiceSheetState extends State<DiceSheet> {
   }
 
   void _planar() {
-    final roll = _random.nextInt(6);
-    if (roll == 0) {
-      widget.controller.planeswalk();
-      setState(() {
-        _result = 'Planeswalk';
-        _detail = widget.controller.game.planechase
-            ? widget.controller.game.currentPlane
-            : 'Dé planaire';
-      });
-      return;
-    }
-    if (roll == 1) {
-      widget.controller.flash('Chaos — résolvez le phénomène du plan');
-      setState(() {
-        _result = 'Chaos';
-        _detail = 'Résolvez le phénomène du plan en jeu';
-      });
-      return;
-    }
+    final roll = widget.controller.rollPlanarDie();
     setState(() {
-      _result = 'Vide';
-      _detail = 'Dé planaire';
+      _result = planarFaceLabel(roll.face);
+      _detail = widget.controller.game.planechase
+          ? 'Coût ${roll.cost} · prochain ${roll.cost + 1}'
+          : 'Pas de course planaire';
     });
   }
 

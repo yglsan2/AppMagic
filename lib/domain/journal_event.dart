@@ -122,6 +122,7 @@ class JournalEvent {
     this.sourcePlayerId,
     this.cardName,
     this.cardTypeLine,
+    this.manaValue,
     this.oracleText,
     this.artUrl,
     this.scryfallId,
@@ -140,6 +141,7 @@ class JournalEvent {
   final String? sourcePlayerId;
   final String? cardName;
   final String? cardTypeLine;
+  final int? manaValue;
   final String? oracleText;
   final String? artUrl;
   final String? scryfallId;
@@ -163,6 +165,7 @@ class JournalEvent {
     'sourcePlayerId': sourcePlayerId,
     'cardName': cardName,
     'cardTypeLine': cardTypeLine,
+    'manaValue': manaValue,
     'oracleText': oracleText,
     'artUrl': artUrl,
     'scryfallId': scryfallId,
@@ -186,6 +189,7 @@ class JournalEvent {
       sourcePlayerId: json['sourcePlayerId'] as String?,
       cardName: json['cardName'] as String?,
       cardTypeLine: json['cardTypeLine'] as String?,
+      manaValue: json['manaValue'] == null ? null : asInt(json['manaValue']),
       oracleText: json['oracleText'] as String?,
       artUrl: json['artUrl'] as String?,
       scryfallId: json['scryfallId'] as String?,

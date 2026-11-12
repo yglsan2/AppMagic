@@ -3,6 +3,7 @@ import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/widgets/handicap_picker.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
 
 Future<void> showPlayerSheet(
@@ -11,9 +12,8 @@ Future<void> showPlayerSheet(
   String playerId, {
   bool tips = false,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
+  return presentForSeat<void>(
+    context,
     builder: (context) {
       return Padding(
         padding: EdgeInsets.only(
@@ -151,6 +151,65 @@ class PlayerSheet extends StatelessWidget {
                         ),
                     ],
                   ),
+                  const SizedBox(height: 14),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Couleurs du jeu',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final key in const ['W', 'U', 'B', 'R', 'G'])
+                        GestureDetector(
+                          onTap: () {
+                            final next = [...player.inks];
+                            if (next.contains(key)) {
+                              next.remove(key);
+                            } else {
+                              next.add(key);
+                            }
+                            controller.setInks(playerId, next);
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: player.inks.contains(key)
+                                  ? manaPalette[key]
+                                  : manaPalette[key]!.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: manaPalette[key]!,
+                                width: player.inks.contains(key) ? 2 : 1,
+                              ),
+                            ),
+                            child: Text(
+                              switch (key) {
+                                'W' => 'Blanc',
+                                'U' => 'Bleu',
+                                'B' => 'Noir',
+                                'R' => 'Rouge',
+                                _ => 'Vert',
+                              },
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: player.inks.contains(key)
+                                    ? const Color(0xFF140E08)
+                                    : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                   if (game.tracksCommanders) ...[
                     const SizedBox(height: 20),
                     Row(
@@ -190,8 +249,7 @@ class PlayerSheet extends StatelessWidget {
                       ],
                     ),
                     Text(
-                      'Chaque commandant a son compteur sur la table. '
-                      '− = dégât · + = corriger.',
+                      'Chacun a son compteur de 21. Ces points ne s’additionnent pas.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.65),
                       ),
@@ -300,8 +358,8 @@ class PlayerSheet extends StatelessWidget {
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () {
-                              showDialog<void>(
-                                context: context,
+                              showSeatDialog<void>(
+                                context,
                                 builder: (context) => AlertDialog(
                                   title: Text(player.name),
                                   content: Text(

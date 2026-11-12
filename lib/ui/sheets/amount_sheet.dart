@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mtg_table/theme/app_theme.dart';
+import 'package:mtg_table/ui/widgets/help_tip.dart';
 import 'package:mtg_table/ui/widgets/repeat_tap.dart';
+import 'package:mtg_table/ui/widgets/table_audio.dart';
 
 Future<void> showAmountSheet(
   BuildContext context, {
@@ -12,9 +14,8 @@ Future<void> showAmountSheet(
   required void Function(int absolute) onSet,
   int? lethalAt,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
+  return presentForSeat<void>(
+    context,
     builder: (context) {
       final height = MediaQuery.sizeOf(context).height * 0.78;
       return SizedBox(
@@ -107,7 +108,10 @@ class _AmountSheetState extends State<AmountSheet> {
                 children: [
                   for (final delta in const [-10, -5, -1, 1, 5, 10])
                     FilledButton.tonal(
-                      onPressed: () => widget.onDelta(delta),
+                      onPressed: () {
+                        TableAudio.playTouch();
+                        widget.onDelta(delta);
+                      },
                       child: Text(delta > 0 ? '+$delta' : '$delta'),
                     ),
                 ],
@@ -162,7 +166,10 @@ class _AmountSheetState extends State<AmountSheet> {
                     child: OutlinedButton(
                       onPressed: amount == null
                           ? null
-                          : () => widget.onDelta(-amount),
+                          : () {
+                              TableAudio.playTouch();
+                              widget.onDelta(-amount);
+                            },
                       child: Text(
                         amount == null ? 'Retirer' : 'Retirer $amount',
                       ),
@@ -173,7 +180,10 @@ class _AmountSheetState extends State<AmountSheet> {
                     child: FilledButton(
                       onPressed: amount == null
                           ? null
-                          : () => widget.onDelta(amount),
+                          : () {
+                              TableAudio.playTouch();
+                              widget.onDelta(amount);
+                            },
                       child: Text(
                         amount == null ? 'Ajouter' : 'Ajouter $amount',
                       ),

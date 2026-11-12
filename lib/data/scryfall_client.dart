@@ -5,6 +5,8 @@ import 'package:mtg_table/data/app_log.dart';
 import 'package:mtg_table/data/retry.dart';
 import 'package:mtg_table/data/safe_image.dart';
 import 'package:mtg_table/data/scryfall_card.dart';
+import 'package:mtg_table/domain/mana_curve.dart';
+import 'package:mtg_table/domain/play_structure.dart';
 
 Map<String, dynamic>? _decodeMap(String body) {
   try {
@@ -200,4 +202,126 @@ Future<TryResult<List<ScryfallCard>>> searchScryfallCardsResult(
     () => _searchOnce(trimmed, limit),
     failMessage: 'Recherche Scryfall indisponible après 4 essais.',
   );
+}
+
+CurveCard _curveFromJson(Map<String, dynamic> json, int count) {
+  final typeLine = json['type_line'] as String? ?? '';
+  final produces = <String>[];
+  final produced = json['produced_mana'];
+  if (produced is List) {
+    for (final color in produced) {
+      if (color is String && curveColors.contains(color)) produces.add(color);
+    }
+  }
+  final oracle = json['oracle_text'] as String? ?? '';
+  final land = typeLine.contains('Land');
+  final creature = typeLine.contains('Creature');
+  final ramp = !land && textRamps(oracle);
+  final draw = textDraws(oracle);
+  final interaction = !land && textInteracts(oracle);
+  final identity = <String>[];
+  final rawIdentity = json['color_identity'];
+  if (rawIdentity is List) {
+    for (final color in rawIdentity) {
+      if (color is String && curveColors.contains(color)) identity.add(color);
+    }
+  }
+  final legalities = json['legalities'];
+  final commanderLegal = legalities is! Map
+      ? true
+      : legalities['commander'] != 'not_legal' &&
+            legalities['commander'] != 'banned';
+  if (land && produces.isEmpty) {
+    final identity = json['color_identity'];
+    if (identity is List) {
+      for (final color in identity) {
+        if (color is String && curveColors.contains(color)) produces.add(color);
+      }
+    }
+  }
+  return CurveCard(
+    name: json['name'] as String? ?? '',
+    count: count,
+    mv: (json['cmc'] as num?)?.round() ?? 0,
+    land: land,
+    manaCost: json['mana_cost'] as String? ?? '',
+    produces: produces,
+    creature: creature,
+    ramp: ramp,
+    draw: draw,
+    instant: typeLine.contains('Instant'),
+    sorcery: typeLine.contains('Sorcery'),
+    artifact: typeLine.contains('Artifact'),
+    enchantment: typeLine.contains('Enchantment'),
+    planeswalker: typeLine.contains('Planeswalker'),
+    interaction: interaction,
+    wipe: !land && textWipes(oracle),
+    basic: typeLine.contains('Basic'),
+    anyNumber: textAnyNumber(oracle),
+    legalCommander: commanderLegal,
+    rarity: json['rarity'] as String? ?? '',
+    edhrecRank: (json['edhrec_rank'] as num?)?.round(),
+    colorIdentity: identity,
+  );
+}
+
+/// Noms exacts, par paquets de 75. Les noms encore inconnus sont retentés
+/// un par un, jusqu’à 60, pour un nom français, une faute légère, ou une carte rare.
+Future<({Map<String, CurveCard> found, List<String> missing})> fetchCurveCards(
+  Map<String, int> countsByName,
+) async {
+  final found = <String, CurveCard>{};
+  final pending = countsByName.keys.toList();
+  for (var i = 0; i < pending.length; i += 75) {
+    final batch = pending.skip(i).take(75).toList();
+    final response = await http.post(
+      Uri.https('api.scryfall.com', '/cards/collection'),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'identifiers': [for (final name in batch) {'name': name}],
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw HttpRetryException(response.statusCode);
+    }
+    final body = _decodeMap(response.body);
+    final data = body?['data'];
+    if (data is List) {
+      for (final raw in data) {
+        if (raw is! Map) continue;
+        final json = Map<String, dynamic>.from(raw);
+        final name = json['name'] as String? ?? '';
+        final count = countsByName[name] ?? 1;
+        if (name.isNotEmpty) found[name.toLowerCase()] = _curveFromJson(json, count);
+      }
+    }
+  }
+  final missing = <String>[];
+  var fuzzy = 0;
+  for (final name in pending) {
+    if (found.containsKey(name.toLowerCase())) continue;
+    if (fuzzy >= 60) {
+      missing.add(name);
+      continue;
+    }
+    fuzzy++;
+    if (fuzzy > 1) {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    final uri = Uri.https('api.scryfall.com', '/cards/named', {'fuzzy': name});
+    final response = await scryfallGetOnce(uri);
+    if (response.statusCode != 200) {
+      missing.add(name);
+      continue;
+    }
+    final json = _decodeMap(response.body);
+    if (json == null) {
+      missing.add(name);
+      continue;
+    }
+    final card = _curveFromJson(json, countsByName[name] ?? 1);
+    found[name.toLowerCase()] = card;
+    if (card.name.isNotEmpty) found[card.name.toLowerCase()] = card;
+  }
+  return (found: found, missing: missing);
 }

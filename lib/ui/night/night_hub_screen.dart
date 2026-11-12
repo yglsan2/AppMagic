@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mtg_table/domain/journal_event.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/domain/night_session.dart';
+import 'package:mtg_table/domain/play_structure.dart';
 import 'package:mtg_table/domain/night_transfer.dart';
 import 'package:mtg_table/domain/player_profile.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/night/night_stats_sheet.dart';
+import 'package:mtg_table/ui/widgets/structure_notes.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -162,7 +165,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Cochez 1 à 8 joueurs pour cette table.',
+                    'Cochez 1 à $maxTablePlayers joueurs pour cette table.',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.65),
                     ),
@@ -181,7 +184,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
                             onChanged: (v) {
                               setModal(() {
                                 if (v == true) {
-                                  if (selected.length < 8) {
+                                  if (selected.length < maxTablePlayers) {
                                     selected.add(player.name);
                                   }
                                 } else {
@@ -260,7 +263,9 @@ class _NightHubScreenState extends State<NightHubScreen> {
       turnAlertSeconds: widget.settings.turnAlertSeconds,
       timerMode: widget.settings.timerMode,
       timersEnabled: widget.settings.timersEnabled,
+      tournament: widget.settings.tournament,
       chessBankSeconds: widget.settings.chessBankSeconds,
+      chessBonusSeconds: widget.settings.chessBonusSeconds,
       handicapsEnabled: widget.settings.handicapsEnabled,
       resetManaOnTurn: widget.settings.resetManaOnTurn,
       resetStormOnTurn: widget.settings.resetStormOnTurn,
@@ -569,6 +574,10 @@ class _NightHubScreenState extends State<NightHubScreen> {
                 ),
             ],
           ),
+          if (_nightSeats(night).isNotEmpty) ...[
+            const SizedBox(height: 20),
+            StructureNotes(seats: _nightSeats(night)),
+          ],
           if (night.games.isNotEmpty) ...[
             const SizedBox(height: 20),
             const Text(
@@ -589,6 +598,24 @@ class _NightHubScreenState extends State<NightHubScreen> {
       ),
     );
   }
+}
+
+List<SeatStructure> _nightSeats(NightSession night) {
+  final seats = <SeatStructure>[];
+  for (final pod in night.pods) {
+    final session = pod.session;
+    if (session == null) continue;
+    final rawGame = session['game'];
+    final rawJournal = session['journal'];
+    if (rawGame is! Map || rawJournal is! List) continue;
+    final game = Game.fromJson(Map<String, dynamic>.from(rawGame));
+    final events = [
+      for (final item in rawJournal)
+        if (item is Map) JournalEvent.fromJson(Map<String, dynamic>.from(item)),
+    ];
+    seats.addAll(journalStructure(game, events));
+  }
+  return seats;
 }
 
 class _PodBadge extends StatelessWidget {

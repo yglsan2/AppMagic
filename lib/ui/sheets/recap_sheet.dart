@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/recap.dart';
+import 'package:mtg_table/ui/widgets/life_graph.dart';
 
 Future<void> showGameRecapSheet(
   BuildContext context,
@@ -26,9 +27,19 @@ Future<void> showGameRecapSheet(
               const SizedBox(height: 8),
               Expanded(
                 child: SingleChildScrollView(
-                  child: SelectableText(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      LifeGraph(
+                        game: controller.game,
+                        log: controller.lifeLog,
+                      ),
+                      const SizedBox(height: 12),
+                      SelectableText(
                     text,
-                    style: const TextStyle(height: 1.35, fontSize: 15),
+                        style: const TextStyle(height: 1.35, fontSize: 15),
+                      ),
+                    ],
                   ),
                 ),
               ),

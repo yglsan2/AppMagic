@@ -9,6 +9,7 @@ import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/night/night_hub_screen.dart';
 import 'package:mtg_table/ui/night/night_start_sheet.dart';
 import 'package:mtg_table/ui/setup/first_player_draw.dart';
+import 'package:mtg_table/ui/sheets/table_link_sheet.dart';
 import 'package:mtg_table/ui/setup/setup_screen.dart';
 import 'package:mtg_table/ui/sheets/privacy_sheet.dart';
 import 'package:mtg_table/ui/stats/stats_screen.dart';
@@ -184,6 +185,18 @@ class _TableMtgAppState extends State<TableMtgApp> {
                 );
               },
               onImportSession: _app.openSession,
+              onJoinTable: () async {
+                final session = await promptJoinTable(context, _app.tableLink);
+                if (session == null || !context.mounted) return;
+                final ok = await _app.openSession(session, drawFirst: false);
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Cette table n’a pas pu s’ouvrir.'),
+                    ),
+                  );
+                }
+              },
             );
           }
           if (_app.awaitingFirstPlayer) {
@@ -214,6 +227,7 @@ class _TableMtgAppState extends State<TableMtgApp> {
               _app.updateSettings(_app.settings.copyWith(coachSeen: true));
             },
             onArchiveWin: () => _app.archiveCurrentGame(),
+            link: _app.tableLink,
           );
         },
       ),

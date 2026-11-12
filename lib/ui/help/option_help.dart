@@ -10,7 +10,7 @@ class OptionTip {
 
 OptionTip tipPoison(int threshold) => OptionTip(
   'Poison',
-  'Marqueurs poison. À $threshold, le joueur perd la partie '
+  'La fiole à tête de mort, c’est le poison. À $threshold, le joueur perd la partie '
       '(10 en général, 15 en Géant à deux têtes ; le seuil se change '
       'dans Réglages). − et + corrigent le total. Ce n’est pas une perte '
       'de points de vie.',
@@ -18,7 +18,8 @@ OptionTip tipPoison(int threshold) => OptionTip(
 
 const tipMonarch = OptionTip(
   'Monarque',
-  'Personne ne l’est au début. Touchez la pastille quand une carte dit '
+  'La couronne, c’est le monarque. Personne ne l’est au début. '
+      'Touchez la pastille quand une carte dit '
       'de devenir le monarque. Une blessure de combat d’une créature adverse '
       'lui vole la couronne. Au début de votre étape de fin, piochez une carte : '
       'Fin de tour vous le demande. Personne n’est indétrônable.',
@@ -26,40 +27,41 @@ const tipMonarch = OptionTip(
 
 const tipTax = OptionTip(
   'Taxe de commandant',
-  'Relancer ce commandant depuis la zone de commandement coûte 2 de mana '
+  'La bourse marquée d’un dollar, avec le trident du commandant. '
+      'Relancer ce commandant depuis la zone de commandement coûte 2 de mana '
       'de plus à chaque fois. Le nombre affiché est ce coût en plus. '
       '+ après un lancement, − si on s’est trompé.',
 );
 
 const tipInitiative = OptionTip(
   'Initiative',
-  'C’est le donjon Undercity, pas une autre carte. Personne ne l’a au début. '
+  'Le donjon percé d’une flèche vers le bas, c’est Undercity. '
+      'Personne ne l’a au début. '
       'Quand une carte dit « prenez l’initiative », allumez cette option : '
       'vous entrez dans Undercity, vous avancez d’une salle et vous appliquez '
-      'son effet. Les salles se suivent sur la carte du donjon. Ici, on note '
-      'seulement qui a l’initiative.\n\n'
+      'son effet. Les salles se suivent dans la feuille du joueur : Mine perdue '
+      'ou Ville souterraine. On choisit la porte, l’app ne la choisit pas.\n\n'
       'Tant que vous l’avez, au début de votre entretien, vous avancez encore '
       'd’une salle.\n\n'
       'Pour la perdre : une créature adverse qui vous inflige des dégâts de '
-      'combat la vole. Son contrôleur la prend, et il avance tout de suite '
-      'dans le donjon. Un commandant qui vous touche en combat compte, parce '
-      'que c’est une blessure de combat : l’app la lui donne toute seule. '
-      'Pour une autre créature, touchez la pastille pour la lui passer. '
-      'Un sort, ou des dégâts hors combat, ne la volent pas.\n\n'
+      'combat la vole. L’app pose la même question que pour la couronne. '
+      'Un commandant qui vous touche en combat compte : l’app la lui donne '
+      'toute seule. Un sort, ou des dégâts hors combat, ne la volent pas.\n\n'
       'Une seule personne l’a à la fois. Si elle quitte la partie, l’initiative '
       'va au joueur dont c’est le tour, ou au suivant si c’était lui.',
 );
 
 const tipBlessing = OptionTip(
   'Bénédiction de la Cité',
-  'On l’obtient en contrôlant dix permanents (Ascension), puis on la garde '
-      'pour toute la partie. Touchez pour l’indiquer. Un second toucher '
-      'sert seulement à corriger une erreur.',
+  'La cité avec la flèche qui monte, c’est la bénédiction. '
+      'On l’obtient par l’Ascension : dix permanents, puis on la garde '
+      'pour toute la partie. Une fois allumée, elle reste. Pour annuler '
+      'une erreur, utilisez l’historique.',
 );
 
 const tipTreasure = OptionTip(
   'Trésors',
-  'Jetons Trésor. On en sacrifie un pour ajouter un mana de n’importe '
+  'Le coffre, c’est le jeton Trésor. On en sacrifie un pour ajouter un mana de n’importe '
       'quelle couleur. L’app ne les sacrifie pas toute seule : − quand '
       'on en dépense un, + quand on en crée.',
 );
@@ -92,43 +94,39 @@ const tipMana = OptionTip(
 
 const tipRing = OptionTip(
   'L’Anneau vous tente',
-  'Quatre paliers. + à chaque tentation, − pour corriger. '
-      'Le compteur s’arrête à 4 : c’est le dernier palier.',
+  'L’anneau est d’abord un filigrane, en quatre quarts. '
+      'Chaque tentation en colorie un. Quand les quatre sont pleins, '
+      'le dernier palier est atteint. + avance, − corrige.',
 );
 
 const tipRad = OptionTip(
   'Radiation',
-  'Au début de votre première phase principale, vous meulez autant de cartes '
+  'Le trèfle, c’est la radiation. '
+      'Au début de votre première phase principale, vous meulez autant de cartes '
       'que de marqueurs, vous perdez 1 point de vie par carte non-terrain, '
-      'puis vous retirez un marqueur. L’app ne meule pas le deck : '
-      'ajustez le nombre et les points de vie à la main.',
+      'puis vous retirez un marqueur. Au début de votre tour, l’app le rappelle. '
+      'Elle ne meule pas et ne retire pas le marqueur toute seule.',
 );
 
 const tipSpeed = OptionTip(
   'Vitesse',
   'De 0 à 4. Elle monte de 1, une seule fois par tour, quand un adversaire '
-      'perd des points de vie pendant votre tour. + le note. '
-      'Le compteur ne dépasse pas 4.',
+      'perd des points de vie pendant votre tour. Un seul + par tour, '
+      'même s’il monte de plusieurs crans d’un coup. Le compteur s’arrête à 4.',
 );
 
 const tipSignature = OptionTip(
   'Sort signature',
   'Format Briseur de serment : le sort choisi avec le planeswalker. '
-      'Le nombre compte les lancements. Dans la roue crantée, touchez le nom '
-      'pour le renommer. La taxe du planeswalker est le compteur à part.',
+      'Le nombre compte les lancements. Le surcoût affiché est ce nombre fois 2. '
+      'Dans la roue crantée, touchez le nom pour le renommer. '
+      'La taxe du planeswalker est le compteur à part.',
 );
 
 const tipCustom = OptionTip(
   'Suivi libre',
-  'Pour un marqueur sans case prévue : indices, nourriture, sang, et le reste. '
+  'Pour un marqueur sans case prévue. Les jetons de table ont déjà la leur. '
       '− et + changent le nombre. La croix, dans la roue crantée, retire le suivi.',
-);
-
-const tipPane = OptionTip(
-  'Affichage des points',
-  'Mes pertes : vous retirez vos propres points. Adversaires : vous retirez '
-      'ceux des autres. Les deux : les deux à la fois. '
-      '« Enregistrer pour ce pseudo » le proposera aux prochaines parties.',
 );
 
 const tipEndTurn = OptionTip(
@@ -140,9 +138,10 @@ const tipEndTurn = OptionTip(
 
 const tipGear = OptionTip(
   'Options',
-  'Poison, monarque, taxe de commandant, trésors, énergie, expérience, '
-      'tempête, mana, puis les plus rares : initiative, anneau, bénédiction '
-      'de la Cité, radiation, vitesse. Chaque − et + modifie bien ce compteur.',
+  'Chaque option est un symbole. Il reste sombre tant qu’il ne compte pas, '
+      'et s’allume dans sa couleur dès qu’il est en jeu. Le nombre est à côté. '
+      'Moins et plus corrigent. Le soleil et la lune, dans la barre, sont '
+      'le jour et la nuit de toute la table.',
 );
 
 OptionTip tipForStat(Stat stat, Player player) => switch (stat) {
@@ -153,20 +152,41 @@ OptionTip tipForStat(Stat stat, Player player) => switch (stat) {
   Stat.speed => tipSpeed,
   Stat.treasure => tipTreasure,
   Stat.storm => tipStorm,
+  Stat.clue => tipClue,
+  Stat.food => tipFood,
+  Stat.blood => tipBlood,
+  Stat.trail => tipTrail,
+  Stat.gold => tipGold,
+  Stat.powerstone => tipPowerstone,
   Stat.signature => OptionTip(player.signatureName, tipSignature.message),
 };
 
+const tipClue = OptionTip('Indice', 'Jeton Indice. On le sacrifie en général pour piocher.');
+const tipFood = OptionTip('Nourriture', 'Jeton Nourriture. On le sacrifie en général pour gagner des points de vie.');
+const tipBlood = OptionTip('Sang', 'Jeton Sang. On le sacrifie en général pour piocher puis se défausser.');
+const tipTrail = OptionTip('Carte', 'Jeton Carte, celui de l’exploration. On le sacrifie pour chercher un terrain.');
+const tipGold = OptionTip('Or', 'Jeton Or. Il se sacrifie pour un mana de n’importe quelle couleur.');
+const tipPowerstone = OptionTip(
+  'Pierre de puissance',
+  'Jeton Pierre de puissance. Il se tape pour un mana incolore, pas pour un sort.',
+);
+
 const tipDayNight = OptionTip(
-  'Jour / nuit',
-  'La partie passe en nuit si le joueur dont c’est le tour n’a lancé aucun sort, '
-      'et revient au jour s’il en a lancé au moins deux. Le menu bascule l’état. '
+  'Jour et nuit',
+  'Le soleil allumé, c’est le jour. La lune allumée, c’est la nuit. '
+      'Les deux sombres : la partie ne suit pas encore le cycle. '
+      'Touchez l’astre voulu. Un second toucher sur l’astre allumé l’éteint, '
+      'si c’était une erreur. La partie passe en nuit si le joueur dont c’est '
+      'le tour n’a lancé aucun sort, et revient au jour s’il en a lancé au moins deux. '
       'L’app ne compte pas les sorts toute seule.',
 );
 
 const tipPlane = OptionTip(
   'Course planaire',
-  'Le dé planaire a quatre faces blanches, une face planeswalk et une face chaos. '
-      'Marcher passe au plan suivant. Chaos rappelle l’effet de chaos du plan affiché.',
+  'Le dé a quatre faces vides, une planeswalk et une chaos. '
+      'Le premier lancer du tour est gratuit, puis chaque suivant coûte 1 de plus. '
+      'Une face planeswalk ne change pas le plan toute seule : Marcher le fait. '
+      'Chaos rappelle le rappel du plan affiché.',
 );
 
 const tipScheme = OptionTip(
@@ -178,8 +198,8 @@ const tipScheme = OptionTip(
 
 const tipBounty = OptionTip(
   'Chasse à la prime',
-  'La prime monte de niveau, puis quelqu’un la réclame et elle repart au début. '
-      'Réclamer l’attribue au joueur dont c’est le tour.',
+  'Chaque joueur a son contrat. Réclamer passe au contrat suivant '
+      'pour le joueur dont c’est le tour. Les autres gardent le leur.',
 );
 
 const tipUndo = OptionTip(
@@ -208,14 +228,29 @@ const tipSalon = OptionTip(
   'Quitte la table et revient à l’écran de départ. La partie en cours peut être reprise.',
 );
 
+const tipShare = OptionTip(
+  'Partage entre téléphones',
+  'Les deux mains qui se serrent, c’est le partage. '
+      'Ce bouton relie cet écran aux autres téléphones qui ont LifeStack : '
+      'Wi-Fi du lieu avec un QR, groupe isolé de quatre, '
+      'ou salon en ligne si le réseau ne tient pas. '
+      'On choisit ensuite son siège, ou on garde la table entière.',
+);
+
 const tipMenu = OptionTip(
   'Menu',
-  'Joueurs, tirage du premier, jour et nuit, recherche de carte, réglages, '
-      'disposition de l’écran, revanche et remise à zéro.',
+  'Joueurs, tirage du premier, soleil et lune, recherche de carte, '
+      'réglages, disposition, revanche et remise à zéro. '
+      'Le partage entre téléphones est le bouton des deux mains, à côté.',
 );
 
 const tipLayout = OptionTip(
   'Disposition',
-  'Téléphone : chacun de son côté. Liste : tous dans le même sens. '
+  'Le soleil et la lune sont au centre, entre les joueurs. '
+      'Logos seuls : le symbole, sans le mot. Logos et noms : le mot sous chaque symbole. '
+      'Façon téléphone : les places autour de cet écran. '
+      'Comptes empilés : tous dans le même sens. '
+      'À trois, sur un grand écran : Table ronde, les trois places à égale distance, '
+      'ou Liste droite, en colonne ou côte à côte selon l’écran. '
       'À quatre, le partage en quatre écrans est aussi proposé.',
 );

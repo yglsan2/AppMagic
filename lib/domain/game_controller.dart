@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:mtg_table/domain/dungeons.dart';
 import 'package:mtg_table/domain/handicap.dart';
 import 'package:mtg_table/domain/journal_event.dart';
 import 'package:mtg_table/domain/models.dart';
@@ -61,6 +62,9 @@ class CombatAsk {
 }
 
 class GameController extends ChangeNotifier {
+  /// Son d’effet quand la vie change. Branché par l’écran de table.
+  static void Function(CastTone cast, int delta)? lifeSound;
+
   GameController({
     required this.game,
     List<Trail>? undo,
@@ -71,17 +75,48 @@ class GameController extends ChangeNotifier {
     DateTime? matchStarted,
   }) : undoStack = undo ?? [],
        redoStack = redo ?? [],
-       journal = journal ?? [],
-       turnStarted = turnStarted ?? DateTime.now(),
-       matchStarted = matchStarted ?? DateTime.now();
+       journal = journal ?? [] {
+    this.turnStarted = turnStarted ?? DateTime.now();
+    this.matchStarted = matchStarted ?? DateTime.now();
+  }
 
   Game game;
+  /// Dernier joueur passé à terre. La revanche lui rend la main.
+  String? lastFallenId;
+  Set<String> _downIds = {};
   final List<Trail> undoStack;
   final List<Trail> redoStack;
   final List<JournalEvent> journal;
   final VoidCallback? onChanged;
-  DateTime turnStarted;
-  DateTime matchStarted;
+  DateTime _turnAnchor = DateTime.now();
+  DateTime _matchAnchor = DateTime.now();
+  final Stopwatch _turnWatch = Stopwatch();
+  final Stopwatch _matchWatch = Stopwatch();
+  Duration _turnBase = Duration.zero;
+  Duration _matchBase = Duration.zero;
+  bool clockPaused = false;
+
+  DateTime get turnStarted => _turnAnchor;
+  set turnStarted(DateTime value) {
+    _turnAnchor = value;
+    _turnWatch
+      ..stop()
+      ..reset();
+    final behind = DateTime.now().difference(value);
+    _turnBase = behind.isNegative ? Duration.zero : behind;
+    if (!clockPaused) _turnWatch.start();
+  }
+
+  DateTime get matchStarted => _matchAnchor;
+  set matchStarted(DateTime value) {
+    _matchAnchor = value;
+    _matchWatch
+      ..stop()
+      ..reset();
+    final behind = DateTime.now().difference(value);
+    _matchBase = behind.isNegative ? Duration.zero : behind;
+    if (!clockPaused) _matchWatch.start();
+  }
   String lastLabel = '';
   int flashId = 0;
   String flashText = '';
@@ -100,11 +135,43 @@ class GameController extends ChangeNotifier {
   /// Mémoire locale des coups de commandant. Les totaux du plateau restent suivis.
   bool rememberCommanderLog = true;
 
+  /// Pas de fin de tour : une perte de points éclaire le compte touché.
+  bool noEndTurn = false;
+
+  /// Vrai pendant qu’un téléphone voisin remplace la partie : on n’écho pas le lien.
+  bool applyingRemote = false;
+  static int _eventSeq = 0;
+
+  String _eventId() =>
+      'e${DateTime.now().microsecondsSinceEpoch}-${_eventSeq++}';
+
   /// Lignes pour récap / bandeau (dérivées de [lifeLog]).
   List<String> get lifeFeed => [for (final e in lifeLog) e.line];
 
-  Duration get turnElapsed => DateTime.now().difference(turnStarted);
-  Duration get matchElapsed => DateTime.now().difference(matchStarted);
+  Duration get turnElapsed => _turnBase + _turnWatch.elapsed;
+  Duration get matchElapsed => _matchBase + _matchWatch.elapsed;
+
+  void pauseClock() {
+    if (clockPaused) return;
+    _turnBase += _turnWatch.elapsed;
+    _matchBase += _matchWatch.elapsed;
+    _turnWatch
+      ..stop()
+      ..reset();
+    _matchWatch
+      ..stop()
+      ..reset();
+    clockPaused = true;
+    notifyListeners();
+  }
+
+  void resumeClock() {
+    if (!clockPaused) return;
+    clockPaused = false;
+    _turnWatch.start();
+    _matchWatch.start();
+    notifyListeners();
+  }
 
   void _pushLifeChange(LifeChange change) {
     lifeLog.insert(0, change);
@@ -170,6 +237,7 @@ class GameController extends ChangeNotifier {
     required int from,
     required int to,
     String? reason,
+    String? sourceId,
   }) {
     if (from == to && reason == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -179,28 +247,25 @@ class GameController extends ChangeNotifier {
       final last = lifeLog.first;
       final samePlayer = last.playerId == player.id;
       final sameReason = last.reason == reason;
+      final sameSource = last.sourceId == sourceId;
       final fresh =
           last.atMs != null && (now - last.atMs!) <= lifeDeltaMergeMs;
       final lastDelta = last.delta;
       final sameSign =
           lastDelta == 0 || delta == 0 || (lastDelta > 0) == (delta > 0);
-      if (samePlayer && sameReason && fresh && sameSign && lastDelta != 0) {
-        lifeLog[0] = LifeChange(
-          playerId: last.playerId,
-          playerName: last.playerName,
-          from: last.from,
-          to: to,
-          delta: to - last.from,
-          turnCount: game.turnCount,
-          roundNumber: game.roundNumber,
-          reason: reason,
-          atMs: now,
-        );
+      if (samePlayer &&
+          sameReason &&
+          sameSource &&
+          fresh &&
+          sameSign &&
+          lastDelta != 0) {
+        lifeLog[0] = last.copy(to: to, delta: to - last.from, atMs: now);
         return;
       }
     }
     _pushLifeChange(
       LifeChange(
+        id: _eventId(),
         playerId: player.id,
         playerName: _groupLabel(player),
         from: from,
@@ -210,6 +275,7 @@ class GameController extends ChangeNotifier {
         roundNumber: game.roundNumber,
         reason: reason,
         atMs: now,
+        sourceId: sourceId,
       ),
     );
   }
@@ -235,17 +301,9 @@ class GameController extends ChangeNotifier {
       final sameSign =
           last.delta == 0 || delta == 0 || (last.delta > 0) == (delta > 0);
       if (same && fresh && sameSign && last.delta != 0) {
-        cmdDamageLog[0] = CmdDamageChange(
-          defenderId: last.defenderId,
-          defenderName: last.defenderName,
-          commanderId: last.commanderId,
-          commanderLabel: last.commanderLabel,
-          fromTaken: last.fromTaken,
+        cmdDamageLog[0] = last.copy(
           toTaken: toTaken,
           delta: toTaken - last.fromTaken,
-          turnCount: game.turnCount,
-          roundNumber: game.roundNumber,
-          lifeFrom: last.lifeFrom ?? lifeFrom,
           lifeTo: lifeTo,
           atMs: now,
         );
@@ -254,6 +312,7 @@ class GameController extends ChangeNotifier {
     }
     _pushCmdDamageChange(
       CmdDamageChange(
+        id: _eventId(),
         defenderId: defender.id,
         defenderName: defender.name,
         commanderId: commanderId,
@@ -279,7 +338,7 @@ class GameController extends ChangeNotifier {
     }
     final active = game.players[game.activeIndex];
     final left = active.clockBankMs - turnElapsed.inMilliseconds;
-    return Duration(milliseconds: left.clamp(0, 6 * 3600 * 1000));
+    return Duration(milliseconds: left.clamp(-3600 * 1000, 6 * 3600 * 1000));
   }
 
   bool get turnOverAlert {
@@ -324,8 +383,20 @@ class GameController extends ChangeNotifier {
     if (undoStack.length > 80) undoStack.removeAt(0);
     redoStack.clear();
     lastLabel = label;
+    _rememberFallen();
     notifyListeners();
     onChanged?.call();
+  }
+
+  void _rememberFallen() {
+    final now = <String>{
+      for (final player in game.players)
+        if (game.isDefeated(player)) player.id,
+    };
+    for (final id in now) {
+      if (!_downIds.contains(id)) lastFallenId = id;
+    }
+    _downIds = now;
   }
 
   void undo() => undoSteps(1);
@@ -335,13 +406,21 @@ class GameController extends ChangeNotifier {
     for (var i = 0; i < steps; i++) {
       if (undoStack.isEmpty) break;
       final trail = undoStack.removeLast();
+      final lives = {for (final player in game.players) player.id: player.life};
       redoStack.add(Trail(trail.label, game.toJson()));
       game = Game.fromJson(trail.before);
+      for (final player in game.players) {
+        if (lives[player.id] != player.life) {
+          _markLife(player.id, retracted: true);
+          _markCmd(player.id, retracted: true);
+        }
+      }
       if (journal.isNotEmpty && journal.first.label == trail.label) {
         journal.removeAt(0);
       }
       lastLabel = 'Annulé · ${trail.label}';
     }
+    _rememberFallen();
     crownChange = null;
     combatAsk = null;
     turnStarted = DateTime.now();
@@ -352,9 +431,17 @@ class GameController extends ChangeNotifier {
   void redo() {
     if (redoStack.isEmpty) return;
     final trail = redoStack.removeLast();
+    final lives = {for (final player in game.players) player.id: player.life};
     undoStack.add(Trail(trail.label, game.toJson()));
     game = Game.fromJson(trail.before);
+    for (final player in game.players) {
+      if (lives[player.id] != player.life) {
+        _markLife(player.id, retracted: false);
+        _markCmd(player.id, retracted: false);
+      }
+    }
     lastLabel = trail.label;
+    _rememberFallen();
     crownChange = null;
     combatAsk = null;
     turnStarted = DateTime.now();
@@ -369,6 +456,26 @@ class GameController extends ChangeNotifier {
     }
     series.add(game.playerById(playerId).life);
     return series;
+  }
+
+  void _markLife(String playerId, {required bool retracted}) {
+    for (var i = 0; i < lifeLog.length; i++) {
+      final event = lifeLog[i];
+      if (event.playerId != playerId || event.retracted == retracted) continue;
+      lifeLog[i] = event.copy(retracted: retracted);
+      return;
+    }
+  }
+
+  void _markCmd(String playerId, {required bool retracted}) {
+    for (var i = 0; i < cmdDamageLog.length; i++) {
+      final event = cmdDamageLog[i];
+      if (event.defenderId != playerId || event.retracted == retracted) {
+        continue;
+      }
+      cmdDamageLog[i] = event.copy(retracted: retracted);
+      return;
+    }
   }
 
   void _setLife(Player player, int value) {
@@ -482,7 +589,9 @@ class GameController extends ChangeNotifier {
   }
 
   void _offerCombat({required String defenderId, String? dealtBy}) {
-    if (game.monarchId != defenderId) return;
+    final crown = game.monarchId == defenderId;
+    final initiative = game.initiativeId == defenderId;
+    if (!crown && !initiative) return;
     if (_combatDeclinedTurn == game.turnCount) return;
     if (combatAsk != null) return;
     final attacker = dealtBy != null && dealtBy != defenderId ? dealtBy : null;
@@ -498,22 +607,34 @@ class GameController extends ChangeNotifier {
   void answerCombat(String? attackerId) {
     final ask = combatAsk;
     combatAsk = null;
-    if (ask == null || game.monarchId != ask.monarchId) {
+    if (ask == null) {
       notifyListeners();
       return;
     }
-    if (attackerId == null || attackerId == ask.monarchId) {
+    final defender = ask.monarchId;
+    if (game.indexOf(defender) < 0) {
+      notifyListeners();
+      return;
+    }
+    if (attackerId == null || attackerId == defender) {
       _combatDeclinedTurn = game.turnCount;
       notifyListeners();
       return;
     }
     final before = game.monarchId;
     final initiativeBefore = game.initiativeId;
+    final wasCrown = before == defender;
+    final hadInitiative = initiativeBefore == defender;
+    if (!wasCrown && !hadInitiative) {
+      notifyListeners();
+      return;
+    }
     final name = playerById(attackerId).name;
-    final lostName = playerById(ask.monarchId).name;
-    _commit('$name prend la couronne', () {
-      game.monarchId = attackerId;
-      _giveInitiative(ask.monarchId, attackerId);
+    final lostName = playerById(defender).name;
+    final label = wasCrown ? '$name prend la couronne' : '$name prend l’initiative';
+    _commit(label, () {
+      if (wasCrown) game.monarchId = attackerId;
+      if (hadInitiative) _giveInitiative(defender, attackerId);
     });
     _noteCrown(before, lostName: lostName);
     _noteInitiative(initiativeBefore, monarchBefore: before);
@@ -530,19 +651,28 @@ class GameController extends ChangeNotifier {
     final initiativeBefore = game.initiativeId;
     final label =
         '${_groupLabel(player)} $before → $next (${next > before ? '+' : ''}${next - before})';
+    final source = dealtBy != null && dealtBy != player.id ? dealtBy : null;
     _commit(label, () {
       _setLife(player, next);
       _rehomeCrown();
       _rehomeInitiative();
+      _recordLife(
+        player: player,
+        from: before,
+        to: next,
+        sourceId: source,
+      );
+      if (next < before) _markVictim(player.id);
     });
-    _recordLife(player: player, from: before, to: next);
     _noteCrown(monarchBefore);
     _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
     if (wasAlive && next <= 0) {
       flash('${player.name} est à terre');
-    } else if (next < before && game.monarchId == player.id) {
+    } else if (next < before &&
+        (game.monarchId == player.id || game.initiativeId == player.id)) {
       _offerCombat(defenderId: player.id, dealtBy: dealtBy);
     }
+    lifeSound?.call(player.cast, next - before);
   }
 
   /// Un seul annuler pour plusieurs joueurs (tous les adversaires, zone…).
@@ -566,6 +696,10 @@ class GameController extends ChangeNotifier {
       if (to != from) plans.add((id: id, from: from, to: to));
     }
     if (plans.isEmpty) return;
+    final losers = [
+      for (final plan in plans)
+        if (plan.to < plan.from) plan.id,
+    ];
 
     final sign = delta > 0 ? '+$delta' : '$delta';
     final everyone = ids.length == game.players.length;
@@ -577,6 +711,9 @@ class GameController extends ChangeNotifier {
     final monarchDropped =
         monarchBefore != null &&
         plans.any((plan) => plan.id == monarchBefore && plan.to < plan.from);
+    final initiativeDropped =
+        initiativeBefore != null &&
+        plans.any((plan) => plan.id == initiativeBefore && plan.to < plan.from);
     _commit(label, () {
       final teams = <int>{};
       for (final plan in plans) {
@@ -592,18 +729,30 @@ class GameController extends ChangeNotifier {
       }
       _rehomeCrown();
       _rehomeInitiative();
+      final source = dealtBy != null && dealtBy.isNotEmpty ? dealtBy : null;
+      for (final plan in plans) {
+        final player = playerById(plan.id);
+        _recordLife(
+          player: player,
+          from: plan.from,
+          to: player.life,
+          sourceId: source != null && source != player.id ? source : null,
+        );
+      }
+      if (losers.length == 1) _markVictim(losers.first);
     });
     _noteCrown(monarchBefore);
     _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
     for (final plan in plans) {
       final player = playerById(plan.id);
-      _recordLife(player: player, from: plan.from, to: player.life);
       if (plan.from > 0 && player.life <= 0) {
         flash('${player.name} est à terre');
       }
     }
     if (monarchDropped && game.monarchId == monarchBefore) {
-      _offerCombat(defenderId: monarchBefore!, dealtBy: dealtBy);
+      _offerCombat(defenderId: monarchBefore, dealtBy: dealtBy);
+    } else if (initiativeDropped && game.initiativeId == initiativeBefore) {
+      _offerCombat(defenderId: initiativeBefore, dealtBy: dealtBy);
     }
   }
 
@@ -772,6 +921,19 @@ class GameController extends ChangeNotifier {
       }
       _rehomeCrown();
       _rehomeInitiative();
+      if (delta > 0 && plans.length == 1) {
+        _markVictim(plans.first.defender.id);
+      }
+      for (final plan in plans) {
+        if (plan.lifeBefore == plan.lifeAfter) continue;
+        _recordLife(
+          player: plan.defender,
+          from: plan.lifeBefore,
+          to: plan.lifeAfter,
+          reason: plan.source,
+          sourceId: found.owner.id,
+        );
+      }
     });
     _noteCrown(monarchBefore);
     _noteInitiative(initiativeBefore, monarchBefore: monarchBefore);
@@ -787,14 +949,6 @@ class GameController extends ChangeNotifier {
         lifeFrom: lifeMoved ? plan.lifeBefore : null,
         lifeTo: lifeMoved ? defender.life : null,
       );
-      if (lifeMoved) {
-        _recordLife(
-          player: defender,
-          from: plan.lifeBefore,
-          to: defender.life,
-          reason: plan.source,
-        );
-      }
       if (plan.remaining == 0) {
         flash('${defender.name} hors jeu · ${plan.source}');
       } else if (game.lifeLethal(defender)) {
@@ -842,7 +996,7 @@ class GameController extends ChangeNotifier {
   }
 
   void addPlayer({String? name}) {
-    if (game.players.length >= 8) return;
+    if (game.players.length >= maxTablePlayers) return;
     if (game.sharedLife && game.players.length.isOdd) return;
     final index = game.players.length;
     final label = (name ?? '').trim().isEmpty
@@ -965,9 +1119,9 @@ class GameController extends ChangeNotifier {
 
   void setPlayerCount(int count) {
     final minPlayers = game.sharedLife ? 2 : 1;
-    var target = count.clamp(minPlayers, 8);
+    var target = count.clamp(minPlayers, maxTablePlayers);
     if (game.sharedLife && target.isOdd) target += 1;
-    target = target.clamp(minPlayers, 8);
+    target = target.clamp(minPlayers, maxTablePlayers);
     if (target == game.players.length) return;
     final monarchBefore = game.monarchId;
     final initiativeBefore = game.initiativeId;
@@ -1032,6 +1186,49 @@ class GameController extends ChangeNotifier {
       commanderId: commanderId,
       delta: value.clamp(0, game.commanderThreshold) - current,
     );
+  }
+
+  /// Un ou deux commandants, depuis la couronne du rectangle.
+  /// Un nom vide reste générique : un seul « Cdt Joueur », deux « Cdt 1 » et « Cdt 2 ».
+  void setMyCommanders(
+    String playerId, {
+    required List<String> names,
+  }) {
+    if (names.isEmpty) return;
+    final player = playerById(playerId);
+    final count = names.length.clamp(1, 2).toInt();
+    final resolved = <String>[];
+    for (var i = 0; i < count; i++) {
+      final raw = names[i].trim();
+      resolved.add(
+        raw.isEmpty ? (count == 1 ? 'Commandant' : 'Cdt ${i + 1}') : raw,
+      );
+    }
+    final unchanged = player.commanders.length == count &&
+        List.generate(count, (i) => i).every(
+          (i) => player.commanders[i].name == resolved[i],
+        );
+    if (unchanged) return;
+    final label = count == 1
+        ? '${player.name} : ${resolved.first}'
+        : '${player.name} : ${resolved[0]} / ${resolved[1]}';
+    _commit(label, () {
+      while (player.commanders.length < count) {
+        player.commanders.add(
+          Commander(id: newId('cmd'), name: 'Commandant'),
+        );
+      }
+      while (player.commanders.length > count) {
+        final gone = player.commanders.removeLast();
+        for (final other in game.players) {
+          other.damageTaken.remove(gone.id);
+          other.lifeDrainedByCommander.remove(gone.id);
+        }
+      }
+      for (var i = 0; i < count; i++) {
+        player.commanders[i].name = resolved[i];
+      }
+    });
   }
 
   void addCommander(String playerId, String name) {
@@ -1116,6 +1313,7 @@ class GameController extends ChangeNotifier {
       );
       for (final player in game.players) {
         player.damageTaken.remove(commanderId);
+        player.lifeDrainedByCommander.remove(commanderId);
       }
     });
   }
@@ -1145,6 +1343,35 @@ class GameController extends ChangeNotifier {
     _commit('Couleur de ${player.name}', () => player.color = color);
   }
 
+  void setCast(String playerId, CastTone cast) {
+    final player = playerById(playerId);
+    if (player.cast == cast) return;
+    _commit('Animations de ${player.name}', () => player.cast = cast);
+  }
+
+  void setCastAll(CastTone cast) {
+    final changed = [
+      for (final player in game.players)
+        if (player.cast != cast) player,
+    ];
+    if (changed.isEmpty) return;
+    _commit('Animation', () {
+      for (final player in changed) {
+        player.cast = cast;
+      }
+    });
+  }
+
+  void setInks(String playerId, List<String> inks) {
+    final player = playerById(playerId);
+    final next = manaInkList(inks);
+    if (next.length == player.inks.length &&
+        next.every(player.inks.contains)) {
+      return;
+    }
+    _commit('Couleurs de ${player.name}', () => player.inks = next);
+  }
+
   void bumpStat(String playerId, Stat stat, int delta) {
     if (delta == 0) return;
     final player = playerById(playerId);
@@ -1154,12 +1381,19 @@ class GameController extends ChangeNotifier {
       Stat.speed => 4,
       _ => 99,
     };
+    if (stat == Stat.speed && delta > 0 && player.speedGainTurn == game.turnCount) {
+      flash('${player.name} a déjà gagné en vitesse ce tour');
+      return;
+    }
     final next = (current + delta).clamp(0, max);
     if (next == current) return;
     final monarchBefore = game.monarchId;
     final initiativeBefore = game.initiativeId;
     _commit('${player.name} · ${statLabel(stat)} $current → $next', () {
       player.writeStat(stat, next);
+      if (stat == Stat.speed && next > current) {
+        player.speedGainTurn = game.turnCount;
+      }
       if (stat == Stat.poison) {
         _rehomeCrown();
         _rehomeInitiative();
@@ -1229,6 +1463,10 @@ class GameController extends ChangeNotifier {
 
   void toggleBlessing(String playerId) {
     final player = playerById(playerId);
+    if (player.blessing) {
+      flash('${player.name} garde la bénédiction pour la partie');
+      return;
+    }
     _commit(
       player.blessing
           ? '${player.name} perd la bénédiction'
@@ -1254,12 +1492,52 @@ class GameController extends ChangeNotifier {
     final player = playerById(playerId);
     if (game.initiativeId == playerId) {
       _commit("Plus d'initiative", () => game.initiativeId = null);
-    } else {
-      _commit(
-        'Initiative : ${player.name}',
-        () => game.initiativeId = playerId,
-      );
+      flash("Plus d'initiative");
+      return;
     }
+    _commit(
+      'Initiative : ${player.name}',
+      () => game.initiativeId = playerId,
+    );
+    flash('${player.name} s’enfonce dans le donjon');
+  }
+
+  void enterDungeon(String playerId, String dungeonId) {
+    final dungeon = dungeonById(dungeonId);
+    if (dungeon == null) return;
+    final player = playerById(playerId);
+    final room = dungeon.start;
+    _commit('${player.name} entre dans ${dungeon.name}', () {
+      player.dungeonId = dungeon.id;
+      player.roomId = room.id;
+    });
+    flash('${player.name} · ${room.name}');
+  }
+
+  void venture(String playerId, String exitId) {
+    final player = playerById(playerId);
+    final dungeon = dungeonById(player.dungeonId);
+    final room = dungeon?.room(player.roomId ?? '');
+    if (dungeon == null || room == null || !room.exits.contains(exitId)) {
+      return;
+    }
+    final next = dungeon.room(exitId);
+    if (next == null) return;
+    _commit('${player.name} · ${next.name}', () => player.roomId = next.id);
+    flash(
+      next.finished
+          ? '${player.name} achève ${dungeon.name}'
+          : '${player.name} · ${next.name}',
+    );
+  }
+
+  void leaveDungeon(String playerId) {
+    final player = playerById(playerId);
+    if (player.dungeonId == null) return;
+    _commit('${player.name} quitte le donjon', () {
+      player.dungeonId = null;
+      player.roomId = null;
+    });
   }
 
   void setDay(DayState state) {
@@ -1354,10 +1632,12 @@ class GameController extends ChangeNotifier {
           : 'Tour de ${incoming.name}',
       () {
         if (game.timersEnabled && game.timerMode == TimerMode.chess) {
-          leaving.clockBankMs = (leaving.clockBankMs - spentMs).clamp(
-            0,
+          final bonus = game.chessBonusSeconds * 1000;
+          leaving.clockBankMs = (leaving.clockBankMs - spentMs + bonus).clamp(
+            -3600 * 1000,
             game.chessBankSeconds * 1000,
           );
+          leaving.timeSpentMs += spentMs;
         }
         if (game.resetManaOnTurn) {
           for (final key in manaKeys) {
@@ -1367,10 +1647,16 @@ class GameController extends ChangeNotifier {
         if (game.resetStormOnTurn) leaving.storm = 0;
         game.activeIndex = next;
         game.turnCount += 1;
+        game.planarRolls = 0;
         if (wrapped) game.roundNumber += 1;
       },
     );
     turnStarted = DateTime.now();
+    if (incoming.rad > 0) {
+      flash(
+        '${incoming.name} · radiation ${incoming.rad} : meule autant de cartes, puis retire 1 radiation',
+      );
+    }
     if (game.timersEnabled &&
         game.timerMode == TimerMode.chess &&
         leaving.clockBankMs <= 0) {
@@ -1386,6 +1672,13 @@ class GameController extends ChangeNotifier {
     );
     if (next == player.clockBankMs) return;
     _commit('${player.name} · chronomètre', () => player.clockBankMs = next);
+  }
+
+  void _markVictim(String playerId) {
+    if (!noEndTurn) return;
+    final index = game.indexOf(playerId);
+    if (index < 0) return;
+    game.activeIndex = index;
   }
 
   void setActive(int index) {
@@ -1414,12 +1707,44 @@ class GameController extends ChangeNotifier {
     });
   }
 
+  /// Le premier lancer du tour est gratuit. Chaque suivant coûte 1 de plus.
+  /// La face planeswalk ne change pas de plan : Marcher le fait, pour laisser
+  /// le temps de répondre.
+  PlanarRoll rollPlanarDie([int? faceIndex]) {
+    if (!game.planechase) {
+      flash('Pas de course planaire');
+      return const PlanarRoll(PlanarFace.blank, 0);
+    }
+    final face = planarFaceOf((faceIndex ?? Random().nextInt(6)).clamp(0, 5));
+    final cost = game.planarRolls;
+    _commit('Dé planaire · $cost', () => game.planarRolls += 1);
+    final detail = switch (face) {
+      PlanarFace.blank => 'Face vide',
+      PlanarFace.chaos => 'Chaos\n${game.currentPlaneChaos}',
+      PlanarFace.planeswalk => 'Planeswalk\nTouchez Marcher pour changer de plan.',
+    };
+    flash('Dé planaire · coût $cost\n$detail');
+    return PlanarRoll(face, cost);
+  }
+
   void planeswalk() {
     if (game.planechase && game.planes.isNotEmpty) {
-      _commit('Planeswalk', () {
-        game.planeIndex = (game.planeIndex + 1) % game.planes.length;
+      final resolving = isPhenomenon(game.currentPlane);
+      _commit(resolving ? 'Phénomène résolu' : 'Planeswalk', () {
+        if (resolving) {
+          final index = game.planeIndex.clamp(0, game.planes.length - 1);
+          game.planes.removeAt(index);
+          if (game.planes.isEmpty) {
+            game.planeIndex = 0;
+          } else if (game.planeIndex >= game.planes.length) {
+            game.planeIndex = 0;
+          }
+        } else {
+          game.planeIndex = (game.planeIndex + 1) % game.planes.length;
+        }
       });
-      flash('Planeswalk · ${game.currentPlane}');
+      final kind = isPhenomenon(game.currentPlane) ? 'Phénomène' : 'Plan';
+      flash('$kind · ${game.currentPlane}');
       return;
     }
     flash('Planeswalk');
@@ -1459,9 +1784,10 @@ class GameController extends ChangeNotifier {
   void claimBounty(String playerId) {
     if (!game.bounty) return;
     final player = playerById(playerId);
-    final card = game.currentBounty;
+    final index = player.bountyIndex < 0 ? game.bountyLevel : player.bountyIndex;
+    final card = bountyAtLevel(index);
     _commit('${player.name} réclame ${card.name}', () {
-      game.bountyLevel = 0;
+      player.bountyIndex = (index + 1) % officialBounties.length;
     });
     _pushLifeChange(
       LifeChange(
@@ -1534,6 +1860,7 @@ class GameController extends ChangeNotifier {
         counter.value = 0;
       }
       player.clockBankMs = game.chessBankSeconds * 1000;
+      player.timeSpentMs = 0;
     }
     if (resetActiveSeat) game.activeIndex = 0;
     if (resetRoundNumber) {
@@ -1578,6 +1905,19 @@ class GameController extends ChangeNotifier {
     matchStarted = now;
   }
 
+  /// Revanche immédiate : tout repart, et celui qui vient de perdre commence.
+  void revenge() {
+    final starter = lastFallenId;
+    final index = starter == null ? -1 : game.indexOf(starter);
+    _commit('Revanche', () {
+      _wipeBoard(resetRoundNumber: false, resetActiveSeat: false);
+      if (index >= 0) game.activeIndex = index;
+    });
+    final now = DateTime.now();
+    turnStarted = now;
+    matchStarted = now;
+  }
+
   void removeLastCommander(String playerId) {
     final player = playerById(playerId);
     if (player.commanders.length <= 1) return;
@@ -1594,7 +1934,9 @@ class GameController extends ChangeNotifier {
         game.turnAlertSeconds == settings.turnAlertSeconds &&
         game.timerMode == settings.timerMode &&
         game.timersEnabled == settings.timersEnabled &&
-        game.chessBankSeconds == settings.chessBankSeconds;
+        game.tournament == settings.tournament &&
+        game.chessBankSeconds == settings.chessBankSeconds &&
+        game.chessBonusSeconds == settings.chessBonusSeconds;
     if (same) return;
     final bankChanged = game.chessBankSeconds != settings.chessBankSeconds;
     _commit('Réglages de partie', () {
@@ -1606,7 +1948,9 @@ class GameController extends ChangeNotifier {
       game.turnAlertSeconds = settings.turnAlertSeconds.clamp(0, 3600);
       game.timerMode = settings.timerMode;
       game.timersEnabled = settings.timersEnabled;
+      game.tournament = settings.tournament;
       game.chessBankSeconds = settings.chessBankSeconds.clamp(60, 6 * 3600);
+      game.chessBonusSeconds = settings.chessBonusSeconds.clamp(0, 60);
       if (settings.timersEnabled &&
           (bankChanged || settings.timerMode == TimerMode.chess)) {
         for (final player in game.players) {
@@ -1628,6 +1972,7 @@ class GameController extends ChangeNotifier {
     'cmdDamageLog': [for (final e in cmdDamageLog) e.toJson()],
     'turnStartedMs': turnStarted.millisecondsSinceEpoch,
     'matchStartedMs': matchStarted.millisecondsSinceEpoch,
+    'clockPaused': clockPaused,
   };
 
   static GameController restore(
@@ -1675,6 +2020,7 @@ class GameController extends ChangeNotifier {
           ? DateTime.now()
           : DateTime.fromMillisecondsSinceEpoch(matchMs),
     );
+    if (json['clockPaused'] == true) controller.pauseClock();
     final log = json['lifeLog'];
     if (log is List) {
       for (final item in log) {
@@ -1719,6 +2065,52 @@ class GameController extends ChangeNotifier {
       }
     }
     return controller;
+  }
+
+  /// Remplace la partie par une session reçue d’un autre téléphone.
+  void adoptSession(Map<String, dynamic> json) {
+    applyingRemote = true;
+    try {
+      final fresh = GameController.restore(json, onChanged: onChanged);
+      game = fresh.game;
+      undoStack
+        ..clear()
+        ..addAll(fresh.undoStack);
+      redoStack
+        ..clear()
+        ..addAll(fresh.redoStack);
+      journal
+        ..clear()
+        ..addAll(fresh.journal);
+      final known = {for (final event in lifeLog) event.id};
+      String? story;
+      for (final event in fresh.lifeLog) {
+        if (event.id.isEmpty || known.contains(event.id)) continue;
+        if (event.delta == 0) continue;
+        story = event.story;
+        break;
+      }
+      lifeLog
+        ..clear()
+        ..addAll(fresh.lifeLog);
+      cmdDamageLog
+        ..clear()
+        ..addAll(fresh.cmdDamageLog);
+      turnStarted = fresh.turnStarted;
+      matchStarted = fresh.matchStarted;
+      lastLabel = fresh.lastLabel;
+      crownChange = null;
+      combatAsk = null;
+      if (story != null) {
+        flashText = story;
+        flashId++;
+        lastLabel = story;
+      }
+      notifyListeners();
+      onChanged?.call();
+    } finally {
+      applyingRemote = false;
+    }
   }
 }
 

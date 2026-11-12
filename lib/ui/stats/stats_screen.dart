@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mtg_table/domain/stats.dart';
 import 'package:mtg_table/theme/app_theme.dart';
+import 'package:mtg_table/ui/tools/curve_screen.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({
@@ -21,6 +22,17 @@ class StatsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Parties & stats'),
         actions: [
+          IconButton(
+            tooltip: 'Analyse de deck',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => CurveScreen(ledger: ledger),
+                ),
+              );
+            },
+            icon: const Icon(Icons.bar_chart),
+          ),
           if (ledger.games.isNotEmpty)
             IconButton(
               tooltip: 'Exporter CSV',
@@ -84,8 +96,14 @@ class StatsScreen extends StatelessWidget {
                   'Victoires',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                 ),
+                if (ledger.averageDurationSec() != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Durée moyenne · ${_formatDur(ledger.averageDurationSec()!)}',
+                  ),
+                ],
                 const SizedBox(height: 8),
-                for (final record in records)
+                for (final record in records) ...[
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(record.name),
@@ -102,6 +120,36 @@ class StatsScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: record.winRate,
+                      minHeight: 4,
+                      color: accent,
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                if (ledger.commanderRecords().isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Commandants',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                  ),
+                  for (final commander in ledger.commanderRecords().take(8))
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(commander.commander),
+                      subtitle: Text(
+                        '${commander.wins}/${commander.games} avec ${commander.owner}',
+                      ),
+                      trailing: Text(
+                        '${(commander.winRate * 100).round()} %',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                ],
                 if (duels.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   const Text(

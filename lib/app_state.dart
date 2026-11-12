@@ -7,6 +7,7 @@ import 'package:mtg_table/data/repository.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/domain/night_session.dart';
+import 'package:mtg_table/net/table_link.dart';
 import 'package:mtg_table/domain/player_profile.dart';
 import 'package:mtg_table/domain/stats.dart';
 
@@ -20,6 +21,7 @@ class AppController extends ChangeNotifier {
   List<PlayerProfile> profiles = [];
   NightSession? night;
   GameController? match;
+  final tableLink = TableLinkController();
   String? resumeLabel;
   bool ready = false;
   bool awaitingFirstPlayer = false;
@@ -343,6 +345,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> park({bool archiveIfWon = true}) async {
     _saveTimer?.cancel();
+    await tableLink.stop();
     final current = match;
     final n = night;
     if (current != null) {

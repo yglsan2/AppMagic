@@ -148,7 +148,10 @@ bool usePokerTable({
   required double height,
   required int players,
 }) {
-  return players >= 5 && players <= 8 && width >= 1000 && height >= 680;
+  return players >= 5 &&
+      players <= maxTablePlayers &&
+      width >= 1000 &&
+      height >= 680;
 }
 
 SeatingPlan planFor({required int players, required bool fourSides}) {

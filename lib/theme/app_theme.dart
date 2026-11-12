@@ -58,8 +58,8 @@ LifeBand lifeBand({required int life, required int startingLife}) {
 
 Color lifeBandColor(LifeBand band) => switch (band) {
   LifeBand.safe => Colors.white,
-  LifeBand.warning => dangerWarn,
-  LifeBand.critical => dangerCrit,
+  LifeBand.warning => const Color(0xFFFF7A55),
+  LifeBand.critical => const Color(0xFFFF2438),
 };
 
 Color playerColor(int index) =>

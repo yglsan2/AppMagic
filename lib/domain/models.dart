@@ -19,6 +19,39 @@ enum DayState { unset, day, night }
 
 enum ViewMode { auto, table, list, focus }
 
+/// Rendu des points, de la défaite et de la victoire.
+/// Souffrance du joueur. Standard : une cendre grise, sans couleur.
+enum CastTone {
+  aucune,
+  standard,
+  faille,
+  sceau,
+  nova,
+  pilier,
+  blanc,
+  bleu,
+  noir,
+  rouge,
+  vert,
+  teinte,
+}
+
+enum FinaleStyle {
+  mythic,
+  lotus,
+  carbon,
+  arena,
+  seal,
+  lean,
+  still,
+  blanc,
+  noir,
+  bleu,
+  vert,
+  rouge,
+  teinte,
+}
+
 /// Quelle partie du profil est ouverte.
 /// [own] : mes pertes et les commandants reçus.
 /// [foes] : points et commandants infligés aux adversaires.
@@ -41,7 +74,22 @@ enum TimerMode {
   chess,
 }
 
-enum Stat { poison, energy, experience, rad, speed, treasure, storm, signature }
+enum Stat {
+  poison,
+  energy,
+  experience,
+  rad,
+  speed,
+  treasure,
+  storm,
+  clue,
+  food,
+  blood,
+  trail,
+  gold,
+  powerstone,
+  signature,
+}
 
 /// Du plus suivi au plus rare. Tout est encore dans les règles
 /// (septembre 2026) : rien de cette liste n’a été retiré.
@@ -51,12 +99,30 @@ const statPlayOrder = <Stat>[
   Stat.energy,
   Stat.experience,
   Stat.storm,
+  Stat.clue,
+  Stat.food,
+  Stat.blood,
+  Stat.trail,
+  Stat.gold,
+  Stat.powerstone,
   Stat.rad,
   Stat.speed,
   Stat.signature,
 ];
 
 const manaKeys = ['W', 'U', 'B', 'R', 'G', 'C'];
+
+/// W U B R G, dans l’ordre, sans doublon. Le C incolore n’entre pas dans les effets.
+List<String> manaInkList(Iterable<Object?> raw) {
+  const order = ['W', 'U', 'B', 'R', 'G'];
+  final got = <String>{};
+  for (final item in raw) {
+    if (item is! String) continue;
+    final key = item.trim().toUpperCase();
+    if (order.contains(key)) got.add(key);
+  }
+  return [for (final key in order) if (got.contains(key)) key];
+}
 
 /// Ancien paquet de démo — conservé pour compat lecture sessions.
 const defaultPlaneNames = [
@@ -74,6 +140,9 @@ const defaultPlaneNames = [
   'Forges endormies',
 ];
 
+/// Plus que les 10 places des compteurs qui relient les téléphones.
+const maxTablePlayers = 12;
+
 class FormatInfo {
   const FormatInfo({
     required this.format,
@@ -86,7 +155,7 @@ class FormatInfo {
     required this.sharedLife,
     required this.defaultPlayers,
     this.minPlayers = 1,
-    this.maxPlayers = 8,
+    this.maxPlayers = maxTablePlayers,
   });
 
   final MatchFormat format;
@@ -112,7 +181,7 @@ const formatCatalog = <FormatInfo>[
   FormatInfo(
     format: MatchFormat.commander,
     label: 'Commander (EDH)',
-    detail: '40 points de vie · 2 à 8 joueurs · 21 dégâts du même commandant',
+    detail: '40 points de vie · 2 à 12 joueurs · 21 dégâts du même commandant',
     help:
         'Un commandant et un deck de 100 cartes. Chacun commence à '
         '40 points de vie. À quatre comme à deux, un joueur perd aussi '
@@ -125,7 +194,7 @@ const formatCatalog = <FormatInfo>[
     sharedLife: false,
     defaultPlayers: 4,
     minPlayers: 2,
-    maxPlayers: 8,
+    maxPlayers: maxTablePlayers,
   ),
   FormatInfo(
     format: MatchFormat.treachery,
@@ -141,7 +210,7 @@ const formatCatalog = <FormatInfo>[
     sharedLife: false,
     defaultPlayers: 5,
     minPlayers: 3,
-    maxPlayers: 8,
+    maxPlayers: maxTablePlayers,
   ),
   FormatInfo(
     format: MatchFormat.duel,
@@ -330,6 +399,8 @@ class Player {
     required this.id,
     required this.name,
     required this.color,
+    this.inks = const [],
+    this.cast = CastTone.standard,
     required this.life,
     required this.mana,
     List<Commander>? commanders,
@@ -343,10 +414,20 @@ class Player {
     this.speed = 0,
     this.treasure = 0,
     this.storm = 0,
+    this.clue = 0,
+    this.food = 0,
+    this.blood = 0,
+    this.trail = 0,
+    this.gold = 0,
+    this.powerstone = 0,
     this.signatureCasts = 0,
     this.signatureName = 'Sort signature',
     this.blessing = false,
     this.ring = 0,
+    this.dungeonId,
+    this.roomId,
+    this.speedGainTurn = -1,
+    this.bountyIndex = -1,
     this.conceded = false,
     this.treacheryRole = TreacheryRole.none,
     this.treacheryRevealed = false,
@@ -354,6 +435,7 @@ class Player {
     int? handicapLifeDelta,
     this.panelArtUrl,
     this.clockBankMs = 0,
+    this.timeSpentMs = 0,
   }) : handicapLifeDelta = clampHandicapLife(
          handicapLifeDelta ?? deckBracket.suggestedLifeDelta,
        ),
@@ -365,11 +447,18 @@ class Player {
   final String id;
   String name;
   int color;
+  /// Couleurs de mana du joueur : W U B R G. Vide : pas de teinte forcée.
+  List<String> inks;
+
+  /// Animations de ce joueur quand on le touche.
+  CastTone cast;
   int life;
   /// Illustration plein panneau (Scryfall) — sinon art du 1er commandant.
   String? panelArtUrl;
-  /// Banque chess clock restante (ms).
+  /// Banque chess clock restante (ms). Peut être négative si le tour a débordé.
   int clockBankMs;
+  /// Temps de jeu accumulé sur ses tours (ms).
+  int timeSpentMs;
   List<Commander> commanders;
 
   String? get displayArtUrl {
@@ -391,10 +480,22 @@ class Player {
   int speed;
   int treasure;
   int storm;
+  int clue;
+  int food;
+  int blood;
+  int trail;
+  int gold;
+  int powerstone;
   int signatureCasts;
   String signatureName;
   bool blessing;
   int ring;
+  String? dungeonId;
+  String? roomId;
+  /// Tour où la vitesse a déjà monté. −1 : pas encore ce tour.
+  int speedGainTurn;
+  /// Contrat de prime de ce joueur. −1 : pas de prime.
+  int bountyIndex;
   bool conceded;
   TreacheryRole treacheryRole;
   bool treacheryRevealed;
@@ -427,6 +528,12 @@ class Player {
       Stat.speed => speed,
       Stat.treasure => treasure,
       Stat.storm => storm,
+      Stat.clue => clue,
+      Stat.food => food,
+      Stat.blood => blood,
+      Stat.trail => trail,
+      Stat.gold => gold,
+      Stat.powerstone => powerstone,
       Stat.signature => signatureCasts,
     };
   }
@@ -447,6 +554,18 @@ class Player {
         treasure = value;
       case Stat.storm:
         storm = value;
+      case Stat.clue:
+        clue = value;
+      case Stat.food:
+        food = value;
+      case Stat.blood:
+        blood = value;
+      case Stat.trail:
+        trail = value;
+      case Stat.gold:
+        gold = value;
+      case Stat.powerstone:
+        powerstone = value;
       case Stat.signature:
         signatureCasts = value;
     }
@@ -456,6 +575,8 @@ class Player {
     'id': id,
     'name': name,
     'color': color,
+    'inks': List<String>.from(inks),
+    'cast': cast.name,
     'life': life,
     'commanders': commanders.map((c) => c.toJson()).toList(),
     'damageTaken': Map<String, int>.from(damageTaken),
@@ -467,10 +588,20 @@ class Player {
     'speed': speed,
     'treasure': treasure,
     'storm': storm,
+    'clue': clue,
+    'food': food,
+    'blood': blood,
+    'trail': trail,
+    'gold': gold,
+    'powerstone': powerstone,
     'signatureCasts': signatureCasts,
     'signatureName': signatureName,
     'blessing': blessing,
     'ring': ring,
+    'dungeonId': dungeonId,
+    'roomId': roomId,
+    'speedGainTurn': speedGainTurn,
+    'bountyIndex': bountyIndex,
     'conceded': conceded,
     'treacheryRole': treacheryRole.name,
     'treacheryRevealed': treacheryRevealed,
@@ -480,6 +611,7 @@ class Player {
     'custom': custom.map((c) => c.toJson()).toList(),
     'panelArtUrl': panelArtUrl,
     'clockBankMs': clockBankMs,
+    'timeSpentMs': timeSpentMs,
   };
 
   factory Player.fromJson(Map<String, dynamic> json) {
@@ -495,6 +627,11 @@ class Player {
       id: json['id'] as String? ?? newId('p'),
       name: json['name'] as String? ?? 'Joueur',
       color: asInt(json['color']),
+      inks: manaInkList(json['inks'] is List ? json['inks'] as List : const []),
+      cast: CastTone.values.firstWhere(
+        (tone) => tone.name == json['cast'],
+        orElse: () => CastTone.standard,
+      ),
       life: asInt(json['life'], 40),
       commanders: [
         for (final raw in (json['commanders'] as List? ?? []))
@@ -519,10 +656,20 @@ class Player {
       speed: asInt(json['speed']),
       treasure: asInt(json['treasure']),
       storm: asInt(json['storm']),
+      clue: asInt(json['clue']),
+      food: asInt(json['food']),
+      blood: asInt(json['blood']),
+      trail: asInt(json['trail']),
+      gold: asInt(json['gold']),
+      powerstone: asInt(json['powerstone']),
       signatureCasts: asInt(json['signatureCasts']),
       signatureName: json['signatureName'] as String? ?? 'Sort signature',
       blessing: json['blessing'] as bool? ?? false,
       ring: asInt(json['ring']),
+      dungeonId: json['dungeonId'] as String?,
+      roomId: json['roomId'] as String?,
+      speedGainTurn: asInt(json['speedGainTurn'], -1),
+      bountyIndex: asInt(json['bountyIndex'], -1),
       conceded: json['conceded'] as bool? ?? false,
       treacheryRole: TreacheryRole.values.firstWhere(
         (role) => role.name == json['treacheryRole'],
@@ -534,6 +681,7 @@ class Player {
       mana: mana,
       panelArtUrl: json['panelArtUrl'] as String?,
       clockBankMs: asInt(json['clockBankMs']),
+      timeSpentMs: asInt(json['timeSpentMs']),
     );
   }
 }
@@ -572,6 +720,7 @@ class Game {
     this.dayState = DayState.unset,
     this.planechase = false,
     this.planeIndex = 0,
+    this.planarRolls = 0,
     this.archenemy = false,
     this.archenemyId,
     this.schemeIndex = 0,
@@ -582,7 +731,9 @@ class Game {
     this.handicapsEnabled = false,
     this.timerMode = TimerMode.alert,
     this.timersEnabled = false,
+    this.tournament = false,
     this.chessBankSeconds = 1200,
+    this.chessBonusSeconds = 0,
   }) : schemes = schemes ?? [];
 
   MatchFormat format;
@@ -607,6 +758,8 @@ class Game {
   bool planechase;
   List<String> planes;
   int planeIndex;
+  /// Lancers du dé planaire déjà faits ce tour. Le prochain coûte ce nombre.
+  int planarRolls;
   bool archenemy;
   String? archenemyId;
   List<String> schemes;
@@ -621,7 +774,11 @@ class Game {
   TimerMode timerMode;
   /// Faux : aucun chrono n’est affiché ni imposé.
   bool timersEnabled;
+  /// Compteur public seulement : pas de conseil ni de recherche pendant le match.
+  bool tournament;
   int chessBankSeconds;
+  /// Secondes rendues à la banque à chaque fin de tour. 0 : rien.
+  int chessBonusSeconds;
 
   factory Game.start({
     MatchFormat format = MatchFormat.commander,
@@ -637,7 +794,9 @@ class Game {
     int turnAlertSeconds = 90,
     TimerMode timerMode = TimerMode.alert,
     bool timersEnabled = false,
+    bool tournament = false,
     int chessBankSeconds = 1200,
+    int chessBonusSeconds = 0,
     bool planechase = false,
     bool archenemy = false,
     bool bounty = false,
@@ -656,7 +815,7 @@ class Game {
     final shared = sharedLife ?? info.sharedLife;
     // Two-Headed : une seule jauge — les handicaps individuels n’ont pas de sens.
     final useHandicaps = handicapsEnabled && !shared;
-    final count = playerCount.clamp(1, 8);
+    final count = playerCount.clamp(1, maxTablePlayers);
     final planes = shuffledPlaneNames();
     final schemes = shuffledSchemeNames();
     final players = <Player>[];
@@ -712,6 +871,11 @@ class Game {
         ),
       );
     }
+    if (bounty) {
+      for (var i = 0; i < players.length; i++) {
+        players[i].bountyIndex = i % officialBounties.length;
+      }
+    }
     return Game(
       format: format,
       startingLife: life,
@@ -727,7 +891,9 @@ class Game {
       turnAlertSeconds: turnAlertSeconds,
       timerMode: timerMode,
       timersEnabled: timersEnabled,
+      tournament: tournament,
       chessBankSeconds: chessBankSeconds,
+      chessBonusSeconds: chessBonusSeconds,
       planechase: planechase,
       archenemy: archenemy,
       archenemyId: archenemy && players.isNotEmpty ? players.first.id : null,
@@ -771,12 +937,12 @@ class Game {
   List<Player> get alive =>
       players.where((player) => !isDefeated(player)).toList();
 
-  /// Titre doux à l’écran (style Lotus : « knocked out », pas un cri).
+  /// Titre à l’écran : Défaite, Hors jeu, ou le départ.
   String defeatTitle(Player player) {
     if (player.conceded) return 'A quitté la table';
     if (commanderLethal(player)) return 'Hors jeu';
     if (poisonLethal(player)) return 'Hors jeu';
-    if (lifeLethal(player)) return 'À terre';
+    if (lifeLethal(player)) return 'Défaite';
     return 'Hors jeu';
   }
 
@@ -852,6 +1018,13 @@ class Game {
 
   String get currentPlaneChaos => chaosForPlane(currentPlane);
 
+  bool get currentIsPhenomenon => isPhenomenon(currentPlane);
+
+  BountyCard bountyFor(Player player) {
+    final index = player.bountyIndex < 0 ? bountyLevel : player.bountyIndex;
+    return bountyAtLevel(index);
+  }
+
   String get currentScheme {
     if (schemes.isEmpty) {
       return schemeNumber > 0 ? 'Stratagème $schemeNumber' : 'Stratagème';
@@ -880,7 +1053,9 @@ class Game {
     'turnAlertSeconds': turnAlertSeconds,
     'timerMode': timerMode.name,
     'timersEnabled': timersEnabled,
+    'tournament': tournament,
     'chessBankSeconds': chessBankSeconds,
+    'chessBonusSeconds': chessBonusSeconds,
     'players': players.map((player) => player.toJson()).toList(),
     'activeIndex': activeIndex,
     'roundNumber': roundNumber,
@@ -891,6 +1066,7 @@ class Game {
     'planechase': planechase,
     'planes': planes,
     'planeIndex': planeIndex,
+    'planarRolls': planarRolls,
     'archenemy': archenemy,
     'archenemyId': archenemyId,
     'schemes': schemes,
@@ -902,7 +1078,25 @@ class Game {
     'handicapsEnabled': handicapsEnabled,
   };
 
+  /// Au plus [maxTablePlayers] joueurs : un transfert ou un message réseau
+  /// ne peut pas gonfler la table au-delà de ce que l’écran sait afficher.
+  static List<Player> _rosterFromJson(Object? raw) {
+    if (raw is! List) return const [];
+    final roster = <Player>[];
+    for (final item in raw) {
+      if (roster.length >= maxTablePlayers) break;
+      if (item is Map<String, dynamic>) {
+        roster.add(Player.fromJson(item));
+      } else if (item is Map) {
+        roster.add(Player.fromJson(Map<String, dynamic>.from(item)));
+      }
+    }
+    return roster;
+  }
+
   factory Game.fromJson(Map<String, dynamic> json) {
+    final roster = _rosterFromJson(json['players']);
+    final active = asInt(json['activeIndex']);
     return Game(
       format: MatchFormat.values.firstWhere(
         (format) => format.name == json['format'],
@@ -923,15 +1117,11 @@ class Game {
         orElse: () => TimerMode.alert,
       ),
       timersEnabled: json['timersEnabled'] as bool? ?? false,
+      tournament: json['tournament'] as bool? ?? false,
       chessBankSeconds: asInt(json['chessBankSeconds'], 1200),
-      players: [
-        for (final raw in (json['players'] as List? ?? []))
-          if (raw is Map<String, dynamic>)
-            Player.fromJson(raw)
-          else if (raw is Map)
-            Player.fromJson(Map<String, dynamic>.from(raw)),
-      ],
-      activeIndex: asInt(json['activeIndex']),
+      chessBonusSeconds: asInt(json['chessBonusSeconds']),
+      players: roster,
+      activeIndex: roster.isEmpty ? 0 : active.clamp(0, roster.length - 1),
       roundNumber: asInt(json['roundNumber'], 1),
       turnCount: asInt(json['turnCount'], 1),
       monarchId: json['monarchId'] as String?,
@@ -943,6 +1133,7 @@ class Game {
       planechase: json['planechase'] as bool? ?? false,
       planes: [for (final plane in (json['planes'] as List? ?? [])) '$plane'],
       planeIndex: asInt(json['planeIndex']),
+      planarRolls: asInt(json['planarRolls']),
       archenemy: json['archenemy'] as bool? ?? false,
       archenemyId: json['archenemyId'] as String?,
       schemes: [
@@ -970,13 +1161,25 @@ bool isGenericCommanderName(String name) {
 String commanderChipLabel(Player owner, Commander commander) {
   final multiple = owner.commanders.length > 1;
   final generic = isGenericCommanderName(commander.name);
+  final String base;
   if (!multiple) {
-    return generic ? 'Cdt ${owner.name}' : 'Cdt ${commander.name}';
+    base = generic ? 'Cdt ${owner.name}' : 'Cdt ${commander.name}';
+  } else {
+    final index =
+        owner.commanders.indexWhere((item) => item.id == commander.id) + 1;
+    return generic
+        ? 'Cdt ${owner.name} · $index'
+        : 'Cdt ${owner.name} · ${commander.name}';
   }
-  final index =
-      owner.commanders.indexWhere((item) => item.id == commander.id) + 1;
-  if (generic) return 'Cdt ${owner.name} · $index';
-  return 'Cdt ${owner.name} · ${commander.name}';
+  return base;
+}
+
+/// Nom affiché. En Géant à deux têtes, le camp est devant le nom.
+String seatTitle(Game game, Player player) {
+  if (!game.sharedLife) return player.name;
+  final index = game.indexOf(player.id);
+  if (index < 0) return player.name;
+  return 'Éq.${index ~/ 2 + 1} · ${player.name}';
 }
 
 String statLabel(Stat stat) {
@@ -988,6 +1191,12 @@ String statLabel(Stat stat) {
     Stat.speed => 'Vitesse',
     Stat.treasure => 'Trésors',
     Stat.storm => 'Tempête',
+    Stat.clue => 'Indice',
+    Stat.food => 'Nourriture',
+    Stat.blood => 'Sang',
+    Stat.trail => 'Carte',
+    Stat.gold => 'Or',
+    Stat.powerstone => 'Pierre de puissance',
     Stat.signature => 'Sort signature',
   };
 }
@@ -995,6 +1204,7 @@ String statLabel(Stat stat) {
 /// Un changement de PV (ou note liée) depuis le début de la partie.
 class LifeChange {
   const LifeChange({
+    this.id = '',
     required this.playerId,
     required this.playerName,
     required this.from,
@@ -1004,8 +1214,11 @@ class LifeChange {
     required this.roundNumber,
     this.reason,
     this.atMs,
+    this.retracted = false,
+    this.sourceId,
   });
 
+  final String id;
   final String playerId;
   final String playerName;
   final int from;
@@ -1015,6 +1228,26 @@ class LifeChange {
   final int roundNumber;
   final String? reason;
   final int? atMs;
+  final bool retracted;
+  /// Joueur qui a infligé la perte, s’il y en a un.
+  final String? sourceId;
+
+  LifeChange copy({int? to, int? delta, int? atMs, bool? retracted}) {
+    return LifeChange(
+      id: id,
+      playerId: playerId,
+      playerName: playerName,
+      from: from,
+      to: to ?? this.to,
+      delta: delta ?? this.delta,
+      turnCount: turnCount,
+      roundNumber: roundNumber,
+      reason: reason,
+      atMs: atMs ?? this.atMs,
+      retracted: retracted ?? this.retracted,
+      sourceId: sourceId,
+    );
+  }
 
   String get deltaLabel => delta > 0
       ? '+$delta'
@@ -1030,6 +1263,10 @@ class LifeChange {
   }
 
   String get line {
+    if (retracted) {
+      final d = deltaLabel == '·' ? '' : ' ($deltaLabel)';
+      return '$playerName$d · annulé';
+    }
     if (from == to && reason != null) {
       return '$playerName · $reason';
     }
@@ -1038,7 +1275,17 @@ class LifeChange {
     return '$playerName $from → $to$d$why';
   }
 
+  /// Phrase courte lue sur les autres téléphones.
+  String get story {
+    if (retracted) return '$playerName · annulé';
+    if (delta == 0 && reason != null) return '$playerName · $reason';
+    final d = delta > 0 ? '+$delta' : '$delta';
+    if (reason == null || reason!.isEmpty) return '$playerName $d';
+    return '$playerName $d · $reason';
+  }
+
   Map<String, dynamic> toJson() => {
+    if (id.isNotEmpty) 'id': id,
     'playerId': playerId,
     'playerName': playerName,
     'from': from,
@@ -1048,13 +1295,21 @@ class LifeChange {
     'roundNumber': roundNumber,
     if (reason != null) 'reason': reason,
     if (atMs != null) 'atMs': atMs,
+    if (retracted) 'retracted': true,
+    if (sourceId != null) 'sourceId': sourceId,
   };
 
   factory LifeChange.fromJson(Map<String, dynamic> json) {
     final from = asInt(json['from']);
     final to = asInt(json['to']);
+    final playerId = '${json['playerId'] ?? ''}';
+    final at = json['atMs'];
+    final stored = json['id'];
     return LifeChange(
-      playerId: '${json['playerId'] ?? ''}',
+      id: stored is String && stored.isNotEmpty
+          ? stored
+          : 'legacy-$playerId-$at-$from-$to',
+      playerId: playerId,
       playerName: '${json['playerName'] ?? '?'}',
       from: from,
       to: to,
@@ -1063,6 +1318,8 @@ class LifeChange {
       roundNumber: asInt(json['roundNumber'], 1),
       reason: json['reason'] as String?,
       atMs: json['atMs'] is int ? json['atMs'] as int : null,
+      retracted: json['retracted'] == true,
+      sourceId: json['sourceId'] as String?,
     );
   }
 }
@@ -1073,6 +1330,7 @@ const lifeDeltaMergeMs = 1400;
 /// Un changement de dégâts de commandant (total infligé).
 class CmdDamageChange {
   const CmdDamageChange({
+    this.id = '',
     required this.defenderId,
     required this.defenderName,
     required this.commanderId,
@@ -1085,8 +1343,10 @@ class CmdDamageChange {
     this.lifeFrom,
     this.lifeTo,
     this.atMs,
+    this.retracted = false,
   });
 
+  final String id;
   final String defenderId;
   final String defenderName;
   final String commanderId;
@@ -1099,6 +1359,32 @@ class CmdDamageChange {
   final int? lifeFrom;
   final int? lifeTo;
   final int? atMs;
+  final bool retracted;
+
+  CmdDamageChange copy({
+    int? toTaken,
+    int? delta,
+    int? lifeTo,
+    int? atMs,
+    bool? retracted,
+  }) {
+    return CmdDamageChange(
+      id: id,
+      defenderId: defenderId,
+      defenderName: defenderName,
+      commanderId: commanderId,
+      commanderLabel: commanderLabel,
+      fromTaken: fromTaken,
+      toTaken: toTaken ?? this.toTaken,
+      delta: delta ?? this.delta,
+      turnCount: turnCount,
+      roundNumber: roundNumber,
+      lifeFrom: lifeFrom,
+      lifeTo: lifeTo ?? this.lifeTo,
+      atMs: atMs ?? this.atMs,
+      retracted: retracted ?? this.retracted,
+    );
+  }
 
   String get deltaLabel => delta > 0
       ? '+$delta'
@@ -1109,6 +1395,7 @@ class CmdDamageChange {
   String get summary => '$commanderLabel → $defenderName · $fromTaken → $toTaken';
 
   String get line {
+    if (retracted) return '$summary · annulé';
     final life = (lifeFrom != null && lifeTo != null && lifeFrom != lifeTo)
         ? ' · PV $lifeFrom→$lifeTo'
         : '';
@@ -1116,6 +1403,7 @@ class CmdDamageChange {
   }
 
   Map<String, dynamic> toJson() => {
+    if (id.isNotEmpty) 'id': id,
     'defenderId': defenderId,
     'defenderName': defenderName,
     'commanderId': commanderId,
@@ -1128,13 +1416,20 @@ class CmdDamageChange {
     if (lifeFrom != null) 'lifeFrom': lifeFrom,
     if (lifeTo != null) 'lifeTo': lifeTo,
     if (atMs != null) 'atMs': atMs,
+    if (retracted) 'retracted': true,
   };
 
   factory CmdDamageChange.fromJson(Map<String, dynamic> json) {
     final from = asInt(json['fromTaken']);
     final to = asInt(json['toTaken']);
+    final defenderId = '${json['defenderId'] ?? ''}';
+    final commanderId = '${json['commanderId'] ?? ''}';
+    final stored = json['id'];
     return CmdDamageChange(
-      defenderId: '${json['defenderId'] ?? ''}',
+      id: stored is String && stored.isNotEmpty
+          ? stored
+          : 'legacy-$defenderId-$commanderId-${json['atMs']}-$from-$to',
+      defenderId: defenderId,
       defenderName: '${json['defenderName'] ?? '?'}',
       commanderId: '${json['commanderId'] ?? ''}',
       commanderLabel: '${json['commanderLabel'] ?? 'Cdt'}',
@@ -1146,6 +1441,7 @@ class CmdDamageChange {
       lifeFrom: json['lifeFrom'] is int ? json['lifeFrom'] as int : null,
       lifeTo: json['lifeTo'] is int ? json['lifeTo'] as int : null,
       atMs: json['atMs'] is int ? json['atMs'] as int : null,
+      retracted: json['retracted'] == true,
     );
   }
 }
@@ -1166,6 +1462,24 @@ Map<String, ScorePane> _namedPanes(Object? raw) {
   return panes;
 }
 
+List<String> _saltLines(Object? raw) {
+  if (raw is! List) return const [];
+  final lines = <String>[];
+  for (final item in raw) {
+    final line = '$item'.trim();
+    if (line.isEmpty) continue;
+    lines.add(line.length > 90 ? line.substring(0, 90) : line);
+    if (lines.length == 8) break;
+  }
+  return lines;
+}
+
+String _epitaph(Object? raw) {
+  final line = '$raw'.trim();
+  if (raw == null || line.isEmpty || line == 'null') return '';
+  return line.length > 90 ? line.substring(0, 90) : line;
+}
+
 class AppSettings {
   const AppSettings({
     required this.haptic,
@@ -1177,15 +1491,31 @@ class AppSettings {
     required this.turnAlertSeconds,
     required this.timerMode,
     required this.timersEnabled,
+    required this.tournament,
     required this.chessBankSeconds,
+    required this.chessBonusSeconds,
     required this.coachSeen,
     required this.showLifeFeed,
     required this.rememberCommanderLog,
     required this.cardJournalAssist,
     required this.handicapsEnabled,
     required this.beginnerTips,
+    this.dayNightIntroSeen = false,
+    this.noEndTurn = false,
+    required this.optionNames,
     required this.scorePane,
+    this.scorePaneChosen = false,
     required this.namedPanes,
+    required this.finaleStyle,
+    required this.saltLines,
+    required this.epitaphLife,
+    required this.epitaphPoison,
+    required this.epitaphCommander,
+    required this.epitaphLeave,
+    required this.epitaphWin,
+    this.sounds = true,
+    this.effectSounds = true,
+    this.touchSounds = true,
   });
 
   static const defaults = AppSettings(
@@ -1198,15 +1528,29 @@ class AppSettings {
     turnAlertSeconds: 90,
     timerMode: TimerMode.alert,
     timersEnabled: false,
+    tournament: false,
     chessBankSeconds: 1200,
+    chessBonusSeconds: 0,
     coachSeen: false,
     showLifeFeed: true,
     rememberCommanderLog: true,
     cardJournalAssist: true,
     handicapsEnabled: false,
     beginnerTips: false,
-    scorePane: ScorePane.foes,
+    noEndTurn: false,
+    optionNames: false,
+    scorePane: ScorePane.own,
     namedPanes: {},
+    finaleStyle: FinaleStyle.mythic,
+    saltLines: const [],
+    epitaphLife: '',
+    epitaphPoison: '',
+    epitaphCommander: '',
+    epitaphLeave: '',
+    epitaphWin: '',
+    sounds: true,
+    effectSounds: true,
+    touchSounds: true,
   );
 
   final bool haptic;
@@ -1219,8 +1563,12 @@ class AppSettings {
   final TimerMode timerMode;
   /// Chronomètre affiché et alertes. Désactivé par défaut.
   final bool timersEnabled;
+  /// Table de tournoi : compteur visible, sans conseil de deck ni recherche.
+  final bool tournament;
   /// Banque initiale chess clock (secondes par joueur).
   final int chessBankSeconds;
+  /// Secondes rendues en fin de tour. 0 : la banque ne fait que baisser.
+  final int chessBonusSeconds;
   final bool coachSeen;
   final bool showLifeFeed;
   /// Historique local des coups de commandant (pris / reste avant la défaite).
@@ -1231,11 +1579,45 @@ class AppSettings {
   final bool handicapsEnabled;
   /// Bulles d’aide (appui long / survol) sur Monarque, poison, etc.
   final bool beginnerTips;
+
+  /// L’explication du jour et de la nuit a déjà été lue une fois.
+  final bool dayNightIntroSeen;
+
+  /// Pas de bouton Fin de tour. Une perte de points éclaire ce compte.
+  final bool noEndTurn;
+
+  /// Nom écrit sous chaque logo. Sans ça, le symbole seul, comme au centre de la table.
+  final bool optionNames;
   /// Affichage quand le pseudo n’a pas de préférence enregistrée.
   final ScorePane scorePane;
 
+  /// Vrai dès qu’un choix d’affichage a été fait dans les réglages.
+  final bool scorePaneChosen;
+
   /// Affichage retenu par pseudo, d’une partie à l’autre.
   final Map<String, ScorePane> namedPanes;
+
+  /// Style d’animation de la table.
+  final FinaleStyle finaleStyle;
+
+  /// Anciennes phrases d’épitaphe, encore lues si la phrase de vie est vide.
+  final List<String> saltLines;
+
+  /// Phrase d’épitaphe par cause. Blancs : {nom} {vainqueur} {perte} {cause}.
+  final String epitaphLife;
+
+  /// Interrupteur général. Coupé, plus aucun son.
+  final bool sounds;
+
+  /// Bruitages des coups, des sorts et de la fin de partie.
+  final bool effectSounds;
+
+  /// Clics des touches et frottement des glissements.
+  final bool touchSounds;
+  final String epitaphPoison;
+  final String epitaphCommander;
+  final String epitaphLeave;
+  final String epitaphWin;
 
   ScorePane paneNamed(String name) {
     final key = playerNameKey(name);
@@ -1279,15 +1661,31 @@ class AppSettings {
     int? turnAlertSeconds,
     TimerMode? timerMode,
     bool? timersEnabled,
+    bool? tournament,
     int? chessBankSeconds,
+    int? chessBonusSeconds,
     bool? coachSeen,
     bool? showLifeFeed,
     bool? rememberCommanderLog,
     bool? cardJournalAssist,
     bool? handicapsEnabled,
     bool? beginnerTips,
+    bool? dayNightIntroSeen,
+    bool? noEndTurn,
+    bool? optionNames,
     ScorePane? scorePane,
+    bool? scorePaneChosen,
     Map<String, ScorePane>? namedPanes,
+    FinaleStyle? finaleStyle,
+    List<String>? saltLines,
+    String? epitaphLife,
+    String? epitaphPoison,
+    String? epitaphCommander,
+    String? epitaphLeave,
+    String? epitaphWin,
+    bool? sounds,
+    bool? effectSounds,
+    bool? touchSounds,
   }) {
     return AppSettings(
       haptic: haptic ?? this.haptic,
@@ -1299,7 +1697,9 @@ class AppSettings {
       turnAlertSeconds: turnAlertSeconds ?? this.turnAlertSeconds,
       timerMode: timerMode ?? this.timerMode,
       timersEnabled: timersEnabled ?? this.timersEnabled,
+      tournament: tournament ?? this.tournament,
       chessBankSeconds: chessBankSeconds ?? this.chessBankSeconds,
+      chessBonusSeconds: chessBonusSeconds ?? this.chessBonusSeconds,
       coachSeen: coachSeen ?? this.coachSeen,
       showLifeFeed: showLifeFeed ?? this.showLifeFeed,
       rememberCommanderLog:
@@ -1307,8 +1707,22 @@ class AppSettings {
       cardJournalAssist: cardJournalAssist ?? this.cardJournalAssist,
       handicapsEnabled: handicapsEnabled ?? this.handicapsEnabled,
       beginnerTips: beginnerTips ?? this.beginnerTips,
+      dayNightIntroSeen: dayNightIntroSeen ?? this.dayNightIntroSeen,
+      noEndTurn: noEndTurn ?? this.noEndTurn,
+      optionNames: optionNames ?? this.optionNames,
       scorePane: scorePane ?? this.scorePane,
+      scorePaneChosen: scorePaneChosen ?? this.scorePaneChosen,
       namedPanes: namedPanes ?? this.namedPanes,
+      finaleStyle: finaleStyle ?? this.finaleStyle,
+      saltLines: saltLines ?? this.saltLines,
+      epitaphLife: epitaphLife ?? this.epitaphLife,
+      epitaphPoison: epitaphPoison ?? this.epitaphPoison,
+      epitaphCommander: epitaphCommander ?? this.epitaphCommander,
+      epitaphLeave: epitaphLeave ?? this.epitaphLeave,
+      epitaphWin: epitaphWin ?? this.epitaphWin,
+      sounds: sounds ?? this.sounds,
+      effectSounds: effectSounds ?? this.effectSounds,
+      touchSounds: touchSounds ?? this.touchSounds,
     );
   }
 
@@ -1322,18 +1736,44 @@ class AppSettings {
     'turnAlertSeconds': turnAlertSeconds,
     'timerMode': timerMode.name,
     'timersEnabled': timersEnabled,
+    'tournament': tournament,
     'chessBankSeconds': chessBankSeconds,
+    'chessBonusSeconds': chessBonusSeconds,
     'coachSeen': coachSeen,
     'showLifeFeed': showLifeFeed,
     'rememberCommanderLog': rememberCommanderLog,
     'cardJournalAssist': cardJournalAssist,
     'handicapsEnabled': handicapsEnabled,
     'beginnerTips': beginnerTips,
+    'dayNightIntroSeen': dayNightIntroSeen,
+    'noEndTurn': noEndTurn,
+    'optionNames': optionNames,
     'scorePane': scorePane.name,
+    'scorePaneChosen': scorePaneChosen,
+    'finaleStyle': finaleStyle.name,
+    'saltLines': saltLines,
+    'epitaphLife': epitaphLife,
+    'epitaphPoison': epitaphPoison,
+    'epitaphCommander': epitaphCommander,
+    'epitaphLeave': epitaphLeave,
+    'epitaphWin': epitaphWin,
+    'sounds': sounds,
+    'effectSounds': effectSounds,
+    'touchSounds': touchSounds,
     'namedPanes': {
       for (final entry in namedPanes.entries) entry.key: entry.value.name,
     },
   };
+
+  static ScorePane _scorePane(Map<String, dynamic> json) {
+    final saved = ScorePane.values.firstWhere(
+      (pane) => pane.name == json['scorePane'],
+      orElse: () => ScorePane.own,
+    );
+    if (json['scorePaneChosen'] == true) return saved;
+    if (saved == ScorePane.foes) return ScorePane.own;
+    return saved;
+  }
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     return AppSettings(
@@ -1352,19 +1792,34 @@ class AppSettings {
         orElse: () => TimerMode.alert,
       ),
       timersEnabled: json['timersEnabled'] as bool? ?? false,
+      tournament: json['tournament'] as bool? ?? false,
       chessBankSeconds: asInt(json['chessBankSeconds'], 1200),
+      chessBonusSeconds: asInt(json['chessBonusSeconds']),
       coachSeen: json['coachSeen'] as bool? ?? false,
       showLifeFeed: json['showLifeFeed'] as bool? ?? true,
       rememberCommanderLog: json['rememberCommanderLog'] as bool? ?? true,
       cardJournalAssist: json['cardJournalAssist'] as bool? ?? true,
       handicapsEnabled: json['handicapsEnabled'] as bool? ?? false,
       beginnerTips: json['beginnerTips'] as bool? ?? false,
-      scorePane: ScorePane.values.firstWhere(
-        (pane) => pane.name == json['scorePane'],
-        orElse: () =>
-            json['selfScoring'] == true ? ScorePane.own : ScorePane.foes,
-      ),
+      dayNightIntroSeen: json['dayNightIntroSeen'] as bool? ?? false,
+      noEndTurn: json['noEndTurn'] as bool? ?? false,
+      optionNames: json['optionNames'] as bool? ?? false,
+      scorePane: _scorePane(json),
+      scorePaneChosen: json['scorePaneChosen'] == true,
       namedPanes: _namedPanes(json['namedPanes']),
+      finaleStyle: FinaleStyle.values.firstWhere(
+        (style) => style.name == json['finaleStyle'],
+        orElse: () => FinaleStyle.mythic,
+      ),
+      saltLines: _saltLines(json['saltLines']),
+      epitaphLife: _epitaph(json['epitaphLife']),
+      epitaphPoison: _epitaph(json['epitaphPoison']),
+      epitaphCommander: _epitaph(json['epitaphCommander']),
+      epitaphLeave: _epitaph(json['epitaphLeave']),
+      epitaphWin: _epitaph(json['epitaphWin']),
+      sounds: json['sounds'] as bool? ?? true,
+      effectSounds: json['effectSounds'] as bool? ?? (json['sounds'] as bool? ?? true),
+      touchSounds: json['touchSounds'] as bool? ?? (json['sounds'] as bool? ?? true),
     );
   }
 }

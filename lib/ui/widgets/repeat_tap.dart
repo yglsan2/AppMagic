@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:mtg_table/ui/widgets/table_audio.dart';
 
 /// Bouton au doigt.
 ///
@@ -58,6 +59,7 @@ class _RepeatTapState extends State<RepeatTap> {
 
   void _tick() {
     if (!mounted || !widget.enabled) return;
+    TableAudio.playTouch();
     widget.onTick();
   }
 
@@ -97,6 +99,7 @@ class _RepeatTapState extends State<RepeatTap> {
         if ((event.position - origin).distance > _slop) {
           _cancelled = true;
           _clearTimers();
+          TableAudio.playSlide();
         }
       },
       onPointerUp: (_) {

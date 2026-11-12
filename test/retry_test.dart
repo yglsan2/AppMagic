@@ -34,4 +34,24 @@ void main() {
     expect(result.ok, isFalse);
     expect(result.errorMessage, 'Échec final');
   });
+
+  test('le finally court une fois, succès ou abandon', () async {
+    var done = 0;
+    final value = await withFourTries(
+      () async => 7,
+      onFinally: () async => done++,
+    );
+    expect(value, 7);
+    expect(done, 1);
+
+    var fails = 0;
+    final missed = await withFourTries<int>(
+      () async => throw StateError('fail'),
+      baseDelay: Duration.zero,
+      onGiveUp: (_, _) async => 0,
+      onFinally: () async => fails++,
+    );
+    expect(missed, 0);
+    expect(fails, 1);
+  });
 }

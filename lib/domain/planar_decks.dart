@@ -2,10 +2,15 @@ import 'dart:math';
 
 /// Plan Planechase : nom + effet chaos (résumé FR pour la table).
 class PlaneCard {
-  const PlaneCard({required this.name, required this.chaos});
+  const PlaneCard({
+    required this.name,
+    required this.chaos,
+    this.phenomenon = false,
+  });
 
   final String name;
   final String chaos;
+  final bool phenomenon;
 }
 
 /// Schéma Archenemy.
@@ -205,6 +210,57 @@ const officialPlanes = <PlaneCard>[
     name: 'Velis Vel',
     chaos: 'Chaos : chaque créature devient un Shapeshifter jusqu’à la fin du tour.',
   ),
+  PlaneCard(
+    name: 'Akoum',
+    chaos: 'Chaos : la terre tremble, des dégâts et des terrains en jeu.',
+  ),
+  PlaneCard(
+    name: 'Bant',
+    chaos: 'Chaos : l’ordre se resserre, des marqueurs et des échanges.',
+  ),
+  PlaneCard(
+    name: 'Esper',
+    chaos: 'Chaos : l’artifice gagne du terrain.',
+  ),
+  PlaneCard(
+    name: 'Ravnica',
+    chaos: 'Chaos : les guildes réclament leur dû.',
+  ),
+  PlaneCard(
+    name: 'Chaotic Aether',
+    phenomenon: true,
+    chaos: 'Phénomène : les sorts coûtent moins, puis on marche encore.',
+  ),
+  PlaneCard(
+    name: 'Interplanar Tunnel',
+    phenomenon: true,
+    chaos: 'Phénomène : on peut changer de plan, puis on marche encore.',
+  ),
+  PlaneCard(
+    name: 'Morphic Tide',
+    phenomenon: true,
+    chaos: 'Phénomène : les permanents se recopient, puis on marche encore.',
+  ),
+  PlaneCard(
+    name: 'Mutual Epiphany',
+    phenomenon: true,
+    chaos: 'Phénomène : chacun pioche, puis on marche encore.',
+  ),
+  PlaneCard(
+    name: 'Planewide Disaster',
+    phenomenon: true,
+    chaos: 'Phénomène : la table encaisse, puis on marche encore.',
+  ),
+  PlaneCard(
+    name: 'Reality Shaping',
+    phenomenon: true,
+    chaos: 'Phénomène : chacun peut poser un permanent, puis on marche encore.',
+  ),
+  PlaneCard(
+    name: 'Spatial Merging',
+    phenomenon: true,
+    chaos: 'Phénomène : deux plans se superposent, puis on marche encore.',
+  ),
 ];
 
 const officialSchemes = <SchemeCard>[
@@ -288,6 +344,42 @@ const officialSchemes = <SchemeCard>[
     name: 'Your Will Is Not Your Own',
     effect: 'Gagnez le contrôle d’une créature ciblée.',
   ),
+  SchemeCard(
+    name: 'All in Good Time',
+    effect: 'Prenez un tour supplémentaire après celui-ci.',
+  ),
+  SchemeCard(
+    name: 'Approach My Molten Realm',
+    effect: 'Les terres deviennent des montagnes pour un tour.',
+  ),
+  SchemeCard(
+    name: 'Behold My Power',
+    effect: 'Une grosse créature arrive sous vos ordres.',
+  ),
+  SchemeCard(
+    name: 'Choose Your Demise',
+    effect: 'Chaque adversaire choisit comment il souffre.',
+  ),
+  SchemeCard(
+    name: 'My Wish Is Your Command',
+    effect: 'Un adversaire joue un sort pour vous.',
+  ),
+  SchemeCard(
+    name: 'Nothing Can Stop Me Now',
+    effect: 'Vos permanents sont difficiles à arrêter ce tour.',
+  ),
+  SchemeCard(
+    name: 'Surrender Your Thoughts',
+    effect: 'Les adversaires meulent et vous en profitez.',
+  ),
+  SchemeCard(
+    name: 'The Iron Guardian Stirs',
+    effect: 'Un gardien artefact se dresse à vos côtés.',
+  ),
+  SchemeCard(
+    name: 'Tooth, Claw, and Tail',
+    effect: 'Des bêtes arrivent et se battent pour vous.',
+  ),
 ];
 
 const officialBounties = <BountyCard>[
@@ -343,8 +435,51 @@ const officialBounties = <BountyCard>[
 
 List<String> shuffledPlaneNames([Random? random]) {
   final rng = random ?? Random();
-  final names = [for (final p in officialPlanes) p.name]..shuffle(rng);
+  final names = [
+    for (final plane in officialPlanes)
+      if (!plane.phenomenon) plane.name,
+  ]..shuffle(rng);
+  final phenomena = [
+    for (final plane in officialPlanes)
+      if (plane.phenomenon) plane.name,
+  ]..shuffle(rng);
+  // Un phénomène toutes les six cartes de plan, jamais collés.
+  var inserted = 0;
+  for (final name in phenomena) {
+    final at = (6 * (inserted + 1) + inserted).clamp(0, names.length);
+    names.insert(at, name);
+    inserted++;
+  }
   return names;
+}
+
+enum PlanarFace { blank, chaos, planeswalk }
+
+class PlanarRoll {
+  const PlanarRoll(this.face, this.cost);
+
+  final PlanarFace face;
+  final int cost;
+}
+
+/// 0 : planeswalk, 1 : chaos, 2 à 5 : face vide.
+PlanarFace planarFaceOf(int roll) {
+  if (roll <= 0) return PlanarFace.planeswalk;
+  if (roll == 1) return PlanarFace.chaos;
+  return PlanarFace.blank;
+}
+
+String planarFaceLabel(PlanarFace face) => switch (face) {
+  PlanarFace.blank => 'Vide',
+  PlanarFace.chaos => 'Chaos',
+  PlanarFace.planeswalk => 'Planeswalk',
+};
+
+bool isPhenomenon(String name) {
+  for (final plane in officialPlanes) {
+    if (plane.name == name) return plane.phenomenon;
+  }
+  return false;
 }
 
 List<String> shuffledSchemeNames([Random? random]) {

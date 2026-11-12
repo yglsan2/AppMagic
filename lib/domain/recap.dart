@@ -32,7 +32,10 @@ String buildGameRecap({
     final poisonBit = player.poison > 0 ? ' · poison ${player.poison}' : '';
     final lethal = defeated ? game.lethalBanner(player) : null;
     final reasonBit = lethal == null ? '' : ' · $lethal';
-    buf.writeln('• ${player.name}$cmdBit · $status$poisonBit$reasonBit');
+    final timeBit = player.timeSpentMs <= 0
+        ? ''
+        : ' · ${_formatDuration(Duration(milliseconds: player.timeSpentMs))} de tour';
+    buf.writeln('• ${player.name}$cmdBit · $status$poisonBit$reasonBit$timeBit');
   }
   if (game.planechase) {
     buf.writeln('');

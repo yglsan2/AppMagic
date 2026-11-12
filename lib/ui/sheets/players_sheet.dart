@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/game_controller.dart';
+import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
 
@@ -47,7 +48,7 @@ class PlayersSheet extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                for (var n = minPlayers; n <= 8; n++)
+                for (var n = minPlayers; n <= maxTablePlayers; n++)
                   if (!game.sharedLife || n.isEven)
                     ChoiceChip(
                       label: Text('$n'),
@@ -92,7 +93,9 @@ class PlayersSheet extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: count >= 8 ? null : () => controller.addPlayer(),
+                onPressed: count >= maxTablePlayers
+                    ? null
+                    : () => controller.addPlayer(),
                 icon: const Icon(Icons.person_add_alt_1),
                 label: const Text('Ajouter un joueur'),
               ),

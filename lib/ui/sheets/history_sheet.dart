@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:mtg_table/data/safe_image.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/journal_event.dart';
+import 'package:mtg_table/domain/play_structure.dart';
+import 'package:mtg_table/ui/widgets/structure_notes.dart';
 import 'package:mtg_table/domain/recap.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/sheets/card_journal_sheet.dart';
@@ -69,7 +71,8 @@ class _HistorySheetState extends State<HistorySheet> {
                   onPressed: _copyExport,
                   icon: const Icon(Icons.copy_all),
                 ),
-                TextButton.icon(
+                if (!game.tournament)
+                  TextButton.icon(
                   onPressed: () =>
                       showCardJournalSheet(context, controller),
                   icon: const Icon(Icons.style_outlined, size: 18),
@@ -122,6 +125,10 @@ class _HistorySheetState extends State<HistorySheet> {
                 ),
                 const SizedBox(height: 8),
               ],
+            ],
+            if (!game.tournament && journal.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              StructureNotes(seats: journalStructure(game, controller.journal)),
             ],
             if (journal.isNotEmpty &&
                 (_filter == _HistoryFilter.all ||

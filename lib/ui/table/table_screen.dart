@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:mtg_table/domain/coach.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/domain/seating.dart';
@@ -14,12 +17,17 @@ import 'package:mtg_table/ui/sheets/players_sheet.dart';
 import 'package:mtg_table/ui/sheets/restart_sheet.dart';
 import 'package:mtg_table/ui/sheets/settings_sheet.dart';
 import 'package:mtg_table/ui/sheets/recap_sheet.dart';
+import 'package:mtg_table/net/table_link.dart';
+import 'package:mtg_table/ui/sheets/table_link_sheet.dart';
 import 'package:mtg_table/ui/sheets/transfer_sheet.dart';
 import 'package:mtg_table/ui/tools/card_search_screen.dart';
 import 'package:mtg_table/ui/widgets/name_dialog.dart';
 import 'package:mtg_table/ui/help/option_help.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
+import 'package:mtg_table/ui/widgets/option_glyphs.dart';
+import 'package:mtg_table/ui/widgets/finale_fx.dart';
 import 'package:mtg_table/ui/widgets/player_panel.dart';
+import 'package:mtg_table/ui/widgets/table_audio.dart';
 
 class TableScreen extends StatefulWidget {
   const TableScreen({
@@ -30,10 +38,12 @@ class TableScreen extends StatefulWidget {
     required this.onLeave,
     required this.onCoachDismissed,
     this.onArchiveWin,
+    this.link,
   });
 
   final GameController controller;
   final AppSettings settings;
+  final TableLinkController? link;
   final ValueChanged<AppSettings> onSettings;
   final VoidCallback onLeave;
   // Conservé : le bandeau global a été retiré, le tour s’affiche sur le siège.
@@ -45,14 +55,23 @@ class TableScreen extends StatefulWidget {
   State<TableScreen> createState() => _TableScreenState();
 }
 
-enum _BoardLayout { auto, phone, stack, split }
+enum _BoardLayout { auto, phone, stack, split, round, line }
+
+enum _DisplayExtra { phone, table, names }
 
 String _layoutName(_BoardLayout layout, int players) => switch (layout) {
   _BoardLayout.phone => players >= 5 ? 'En cercle' : 'Façon téléphone',
   _BoardLayout.stack => 'Comptes empilés',
   _BoardLayout.split => '4 écrans',
+  _BoardLayout.round => 'Table ronde',
+  _BoardLayout.line => 'Liste droite',
   _BoardLayout.auto => 'Automatique',
 };
+
+/// Grand écran branché : table ronde ou liste droite pour trois joueurs.
+bool _roundTableRoom(Size size) {
+  return size.shortestSide >= 640 && size.longestSide >= 900;
+}
 
 class _CombatCrownAsk extends StatelessWidget {
   const _CombatCrownAsk({required this.controller});
@@ -124,6 +143,12 @@ class _TableScreenState extends State<TableScreen> {
   String? _toast;
   int _seenFlash = 0;
   int _seenCrown = 0;
+  int _coachTurn = -1;
+  int _coachPoison = -1;
+  List<String> _coachLines = const [];
+  DayState _trackedDay = DayState.unset;
+  String? _skyHelpFor;
+  bool _skyHelpOnce = false;
   _BoardLayout _layout = _BoardLayout.auto;
 
   /// Siège affiché en mode Focus (indépendant du tour actif).
@@ -133,6 +158,22 @@ class _TableScreenState extends State<TableScreen> {
   void initState() {
     super.initState();
     widget.controller.addListener(_onGame);
+    widget.link?.addListener(_onLink);
+    widget.link?.onSession = _onRemoteSession;
+    _coachTurn = widget.controller.game.turnCount;
+    _trackedDay = widget.controller.game.dayState;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final link = widget.link;
+    if (link == null || !link.hosting || link.centerChosen) return;
+    final size = MediaQuery.sizeOf(context);
+    link.centerChosen = true;
+    if (size.width >= 1000 && size.height >= 680) {
+      link.setCenter(true);
+    }
   }
 
   @override
@@ -142,10 +183,25 @@ class _TableScreenState extends State<TableScreen> {
       oldWidget.controller.removeListener(_onGame);
       widget.controller.addListener(_onGame);
     }
+    if (!widget.settings.beginnerTips) {
+      _coachLines = const [];
+      if (_skyHelpOnce) {
+        _skyHelpFor = null;
+        _skyHelpOnce = false;
+      }
+    }
   }
 
-  List<_BoardLayout> _layoutChoices(int players) {
+  List<_BoardLayout> _layoutChoices(int players, {required bool roundRoom}) {
     if (players < 2) return const [];
+    if (players == 3 && roundRoom) {
+      return const [
+        _BoardLayout.phone,
+        _BoardLayout.stack,
+        _BoardLayout.round,
+        _BoardLayout.line,
+      ];
+    }
     if (players == 4) {
       return const [
         _BoardLayout.phone,
@@ -156,10 +212,16 @@ class _TableScreenState extends State<TableScreen> {
     return const [_BoardLayout.phone, _BoardLayout.stack];
   }
 
-  _BoardLayout _shownLayout(int players) {
+  _BoardLayout _shownLayout(int players, {required bool roundRoom}) {
     if (_layout == _BoardLayout.split && players != 4) return _BoardLayout.phone;
+    if (_layout == _BoardLayout.round && (players != 3 || !roundRoom)) {
+      return _BoardLayout.phone;
+    }
+    if (_layout == _BoardLayout.line && (players != 3 || !roundRoom)) {
+      return _BoardLayout.phone;
+    }
     if (_layout != _BoardLayout.auto) return _layout;
-    if (players >= 5 && players <= 8) return _BoardLayout.stack;
+    if (players >= 5) return _BoardLayout.stack;
     return _BoardLayout.phone;
   }
 
@@ -177,6 +239,10 @@ class _TableScreenState extends State<TableScreen> {
           'Comptes empilés, tous dans le même sens. Pratique sur un tactile ou un projecteur.',
         _BoardLayout.split =>
           'Quatre écrans, tous dans le même sens : haut gauche, haut droite, bas gauche, bas droite.',
+        _BoardLayout.round =>
+          'Table ronde : les trois places à égale distance autour du centre.',
+        _BoardLayout.line =>
+          'Liste droite : les trois places dans le même sens, en colonne ou côte à côte selon l’écran.',
         _BoardLayout.auto => 'Disposition automatique.',
       };
     });
@@ -184,12 +250,30 @@ class _TableScreenState extends State<TableScreen> {
 
   void _onGame() {
     if (!mounted) return;
+    _syncSkyHelp();
+    final link = widget.link;
+    if (link != null && link.linked && !widget.controller.applyingRemote) {
+      link.publishLocal(widget.controller.exportSession());
+    }
     final crown = widget.controller.crownChange;
     final fresh = crown != null &&
         widget.controller.crownAt != null &&
         DateTime.now().difference(widget.controller.crownAt!) <
             const Duration(seconds: 5);
-    if (widget.settings.beginnerTips && fresh && crown.id != _seenCrown) {
+    final mine = link?.mySeat;
+    final privateSeat =
+        link != null && link.linked && !link.center && mine != null;
+    if (privateSeat && fresh && crown.id != _seenCrown) {
+      _seenCrown = crown.id;
+      _seenFlash = widget.controller.flashId;
+      if (crown.gainedId == mine) {
+        _showToast(
+          'Vous êtes monarque. Au début de votre étape de fin, piochez une carte.',
+          const Duration(seconds: 5),
+        );
+        return;
+      }
+    } else if (widget.settings.beginnerTips && fresh && crown.id != _seenCrown) {
       _seenCrown = crown.id;
       _seenFlash = widget.controller.flashId;
       final name = widget.controller.playerById(crown.gainedId).name;
@@ -212,13 +296,100 @@ class _TableScreenState extends State<TableScreen> {
     final id = widget.controller.flashId;
     if (id != _seenFlash) {
       _seenFlash = id;
-      _toast = widget.controller.flashText;
-      _toastTimer?.cancel();
-      _toastTimer = Timer(const Duration(milliseconds: 1600), () {
-        if (mounted) setState(() => _toast = null);
-      });
+      _showToast(widget.controller.flashText, const Duration(seconds: 2));
+      return;
     }
+    _coachPrivate(mine);
     setState(() {});
+  }
+
+  void _showToast(String text, Duration duration) {
+    _toastTimer?.cancel();
+    _toastTimer = Timer(duration, () {
+      if (mounted) setState(() => _toast = null);
+    });
+    setState(() => _toast = text);
+  }
+
+  void _syncSkyHelp() {
+    final game = widget.controller.game;
+    final day = game.dayState;
+    final activated = day != DayState.unset && day != _trackedDay;
+    _trackedDay = day;
+    if (!widget.settings.beginnerTips) {
+      if (_skyHelpOnce) {
+        _skyHelpFor = null;
+        _skyHelpOnce = false;
+      }
+      return;
+    }
+    if (activated &&
+        !widget.settings.dayNightIntroSeen &&
+        _skyHelpFor == null &&
+        game.players.isNotEmpty) {
+      _skyHelpFor = game.players[game.activeIndex].id;
+      _skyHelpOnce = true;
+    }
+  }
+
+  void _explainSky() {
+    final game = widget.controller.game;
+    if (game.players.isEmpty) return;
+    setState(() {
+      _skyHelpFor = game.players[game.activeIndex].id;
+      _skyHelpOnce = false;
+    });
+  }
+
+  void _dismissSkyHelp() {
+    final once = _skyHelpOnce;
+    setState(() {
+      _skyHelpFor = null;
+      _skyHelpOnce = false;
+    });
+    if (once && !widget.settings.dayNightIntroSeen) {
+      widget.onSettings(
+        widget.settings.copyWith(dayNightIntroSeen: true),
+      );
+    }
+  }
+
+  void _coachPrivate(String? mine) {
+    final link = widget.link;
+    final game = widget.controller.game;
+    if (!widget.settings.beginnerTips || game.tournament || game.players.isEmpty) {
+      _coachLines = const [];
+      return;
+    }
+    final personal =
+        link != null && link.linked && !link.center && mine != null;
+    if (personal && !game.players.any((player) => player.id == mine)) return;
+    final active = game.players[game.activeIndex].id;
+    if (personal && mine != active) {
+      _coachLines = const [];
+      return;
+    }
+    final me = widget.controller.playerById(personal ? mine : active);
+    if (personal) {
+      if (_coachPoison < 0) _coachPoison = me.poison;
+      if (me.poison > _coachPoison) {
+        final reached = me.poison;
+        _coachPoison = reached;
+        if (reached >= game.poisonThreshold - 2) {
+          _showToast(
+            'Poison $reached. Le seuil est ${game.poisonThreshold}.',
+            const Duration(seconds: 4),
+          );
+          return;
+        }
+      } else {
+        _coachPoison = me.poison;
+      }
+    }
+    if (_coachTurn != game.turnCount) {
+      _coachTurn = game.turnCount;
+      _coachLines = turnReminders(game, me);
+    }
   }
 
   final Map<String, ScorePane> _sessionPane = {};
@@ -255,11 +426,42 @@ class _TableScreenState extends State<TableScreen> {
     );
   }
 
+  var _landscapeHeld = false;
+
+  void _holdLandscape(bool hold) {
+    if (_landscapeHeld == hold) return;
+    _landscapeHeld = hold;
+    SystemChrome.setPreferredOrientations(
+      hold
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : DeviceOrientation.values,
+    );
+  }
+
   @override
   void dispose() {
+    if (_landscapeHeld) {
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    }
     _toastTimer?.cancel();
     widget.controller.removeListener(_onGame);
+    widget.link?.removeListener(_onLink);
+    if (widget.link?.onSession == _onRemoteSession) {
+      widget.link?.onSession = null;
+    }
     super.dispose();
+  }
+
+  void _onLink() {
+    if (mounted) setState(() {});
+  }
+
+  void _onRemoteSession(Map<String, dynamic> session) {
+    if (!mounted) return;
+    widget.controller.adoptSession(session);
   }
 
   Future<void> _leave() async {
@@ -307,19 +509,48 @@ class _TableScreenState extends State<TableScreen> {
         title: const Text('LifeStack'),
         content: const SingleChildScrollView(
           child: Text(
-            'Compteur de partie pour Magic. Les dégâts de chaque commandant '
-            'se comptent d’un geste, partenaires compris.\n\n'
+            'Compteur de partie, écrit par DesertYGL. On pose l’écran '
+            'au milieu, chacun lit son côté, et on joue. Les dégâts de '
+            'chaque commandant se comptent d’un geste, partenaires compris.\n\n'
             'Le journal de cartes, en option, passe par Scryfall et reste '
-            'sur l’appareil : il propose les effets simples, et attend une '
+            'sur l’appareil. Il propose les effets simples, et attend une '
             'confirmation avant de toucher aux points de vie. Ce n’est pas '
-            'un moteur de règles complet.\n\n'
-            'LifeStack est un projet de fan, non officiel. Il suit la '
-            'politique Fan Content de Wizards of the Coast. Wizards of the '
-            'Coast ne l’approuve pas et ne le sponsorise pas. Les noms de '
-            'cartes et les règles restent la propriété de Wizards of the Coast LLC.\n\n'
-            'Recherche de cartes : Scryfall.\n\n'
-            'Vie privée : avant la partie, Outils, puis Vie privée. '
-            'Les données restent sur l’appareil, et on peut les effacer.',
+            'un moteur de règles, ni un juge.\n\n'
+            'Licence\n'
+            'LifeStack est un logiciel libre, publié par DesertYGL sous la '
+            'GNU General Public License version 3. Tu peux le copier, le '
+            'modifier et le partager, à condition de garder cette licence '
+            'et de dire ce que tu as changé. Le texte complet est le fichier '
+            'LICENSE du projet. Il est fourni tel quel, sans garantie '
+            'd’aucune sorte.\n\n'
+            'Magic\n'
+            'Magic: The Gathering, les noms de cartes, les images et les '
+            'règles appartiennent à Wizards of the Coast LLC. LifeStack est '
+            'un projet de fan, non officiel. Wizards ne le fabrique pas, '
+            'ne le vérifie pas, ne l’approuve pas et ne le sponsorise pas. '
+            'DesertYGL n’est pas Wizards, et n’est pas responsable de ce '
+            'qu’un juge, un magasin, Wizards ou un autre joueur décide.\n\n'
+            'Responsabilité\n'
+            'DesertYGL ne répond pas des points mal comptés, d’une partie '
+            'perdue, d’un tournoi, d’une coupure réseau, d’un relais tiers '
+            '(HiveMQ, EMQX), de Scryfall, ni de ce que tu choisis d’envoyer '
+            'ou d’effacer. Tu utilises LifeStack à tes risques.\n\n'
+            'Vie privée et accessibilité\n'
+            'Avant la partie : Vie privée. La partie locale reste sur '
+            'l’appareil. Le salon en ligne, si tu l’ouvres, envoie la table '
+            'chiffrée le temps de la partie. L’écran est en français, le '
+            'texte suit la taille du système, le fond est sombre et les '
+            'boutons ont un nom. Ce n’est pas un audit RGAA officiel.\n\n'
+            'Effets dessinés\n'
+            'Les gouttes, les étincelles grises et les cinq signes du pentagone sont dessinés pour LifeStack. '
+            'Le reste des animations vient de packs séparés (Aura, lames et éclairs de Dolkyns, '
+            'crânes de Viktor Hahn, Ember Flipbooks d’Inkharbor, Crisp Juice, Elemental Spellcraft, '
+            'Elemental Magic, Magic VFX, feux de Spiney, fumée de Beast, '
+            'PVFX Foundry, Slash Effect, verts de ParticleFX Studio). Les sons viennent de '
+            'Fantasy SFX et de Kenney. Le clic des touches vient d’ElevenLabs, '
+            'le son des + d’un notify Pixabay raccourci. Les packs et ces sons ne sont pas de DesertYGL '
+            'et ne sont pas couverts par la GPL. On ne les redistribue pas '
+            'toutes seules.',
           ),
         ),
         actions: [
@@ -336,13 +567,37 @@ class _TableScreenState extends State<TableScreen> {
   Widget build(BuildContext context) {
     widget.controller.rememberCommanderLog =
         widget.settings.rememberCommanderLog;
+    widget.controller.noEndTurn = widget.settings.noEndTurn;
+    _holdLandscape(widget.controller.game.players.length == 4);
+    TableAudio.master = widget.settings.sounds;
+    TableAudio.effects = widget.settings.effectSounds;
+    TableAudio.touches = widget.settings.touchSounds;
+    GameController.lifeSound = (cast, delta) {
+      if (widget.settings.finaleStyle == FinaleStyle.still) return;
+      if (cast == CastTone.aucune) return;
+      TableAudio.playWound(delta);
+    };
     final game = widget.controller.game;
+    final personalPhone = widget.link != null &&
+        widget.link!.linked &&
+        !widget.link!.center;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _leave();
       },
-      child: Scaffold(
+      child: FinaleScope(
+        style: widget.settings.finaleStyle,
+        saltLines: widget.settings.saltLines,
+        epitaphLife: widget.settings.epitaphLife,
+        epitaphPoison: widget.settings.epitaphPoison,
+        epitaphCommander: widget.settings.epitaphCommander,
+        epitaphLeave: widget.settings.epitaphLeave,
+        epitaphWin: widget.settings.epitaphWin,
+        onArchiveWin: widget.onArchiveWin,
+        child: OptionCaption(
+        names: widget.settings.optionNames,
+        child: Scaffold(
         backgroundColor: Colors.transparent,
         body: DecoratedBox(
           decoration: const BoxDecoration(gradient: pageGradient),
@@ -351,7 +606,14 @@ class _TableScreenState extends State<TableScreen> {
               byId: _panes(),
               onChoose: _choosePane,
               onSave: _savePane,
-              child: Stack(
+              child: SkyIntro(
+                playerId: _skyHelpFor,
+                title: tipDayNight.title,
+                message: tipDayNight.message,
+                onDismiss: _dismissSkyHelp,
+                child: TableDay(
+                state: game.dayState,
+                child: Stack(
               children: [
                 Column(
                   children: [
@@ -369,6 +631,15 @@ class _TableScreenState extends State<TableScreen> {
                         switch (action) {
                           case _Menu.players:
                             showPlayersSheet(context, widget.controller);
+                          case _Menu.link:
+                            final link = widget.link;
+                            if (link == null) break;
+                            link.setCenter(false);
+                            showTableLinkSheet(
+                              context,
+                              link: link,
+                              controller: widget.controller,
+                            );
                           case _Menu.first:
                             _redrawFirst();
                           case _Menu.cardJournal:
@@ -411,6 +682,15 @@ class _TableScreenState extends State<TableScreen> {
                               context,
                               settings: widget.settings,
                               onChanged: widget.onSettings,
+                              cast: sharedCast(game.players),
+                              onCast: (cast) {
+                                widget.controller.setCastAll(cast);
+                                widget.onSettings(
+                                  widget.settings.copyWith(
+                                    finaleStyle: finaleForCast(cast),
+                                  ),
+                                );
+                              },
                             );
                           case _Menu.layoutPhone:
                             _setLayout(_BoardLayout.phone);
@@ -418,6 +698,10 @@ class _TableScreenState extends State<TableScreen> {
                             _setLayout(_BoardLayout.stack);
                           case _Menu.layoutSplit:
                             _setLayout(_BoardLayout.split);
+                          case _Menu.layoutRound:
+                            _setLayout(_BoardLayout.round);
+                          case _Menu.layoutLine:
+                            _setLayout(_BoardLayout.line);
                           case _Menu.rotate:
                             widget.controller.rotateSeats();
                           case _Menu.shuffle:
@@ -434,16 +718,58 @@ class _TableScreenState extends State<TableScreen> {
                             _about();
                         }
                       },
-                      showCardJournal: widget.settings.cardJournalAssist,
+                      showCardJournal: widget.settings.cardJournalAssist &&
+                          !game.tournament,
                       showTreachery: game.format == MatchFormat.treachery,
                       beginnerTips: widget.settings.beginnerTips,
-                      layouts: _layoutChoices(game.players.length),
-                      currentLayout: _shownLayout(game.players.length),
+                      layouts: personalPhone
+                          ? const []
+                          : _layoutChoices(
+                              game.players.length,
+                              roundRoom: _roundTableRoom(MediaQuery.sizeOf(context)),
+                            ),
+                      currentLayout: _shownLayout(
+                        game.players.length,
+                        roundRoom: _roundTableRoom(MediaQuery.sizeOf(context)),
+                      ),
                       onLayout: _setLayout,
+                      phoneMode: personalPhone,
+                      onPhoneMode: widget.link == null
+                          ? null
+                          : () {
+                              widget.link!.setCenter(false);
+                              showTableLinkSheet(
+                                context,
+                                link: widget.link!,
+                                controller: widget.controller,
+                              );
+                            },
+                      onTableMode: widget.link == null
+                          ? null
+                          : () => widget.link!.setCenter(true),
+                      optionNames: widget.settings.optionNames,
+                      onCast: (cast) {
+                        widget.controller.setCastAll(cast);
+                        widget.onSettings(
+                          widget.settings.copyWith(
+                            finaleStyle: finaleForCast(cast),
+                          ),
+                        );
+                      },
+                      onOptionNames: () => widget.onSettings(
+                        widget.settings.copyWith(
+                          optionNames: !widget.settings.optionNames,
+                        ),
+                      ),
                     ),
                     if (game.victoryBanner() != null)
                       _VictoryBanner(
-                        text: game.victoryBanner()!,
+                        text: FinaleScope.epitaphVictory(
+                              context,
+                              name: game.winnerLabel() ?? '',
+                              winner: game.winnerLabel() ?? '',
+                            ) ??
+                            game.victoryBanner()!,
                         onRematch: () => _restart(initial: RestartKind.rematch),
                         onZero: () => _restart(initial: RestartKind.zero),
                         onRecap: () =>
@@ -459,7 +785,9 @@ class _TableScreenState extends State<TableScreen> {
                       showTips: widget.settings.beginnerTips,
                     ),
                     Expanded(
-                      child: LayoutBuilder(
+                      child: Stack(
+                        children: [
+                          LayoutBuilder(
                         builder: (context, constraints) {
                           final tablet = useFourSides(
                             width: constraints.maxWidth,
@@ -489,6 +817,34 @@ class _TableScreenState extends State<TableScreen> {
                               widget.settings.viewMode == ViewMode.list ||
                               widget.settings.viewMode == ViewMode.focus;
                           final count = game.players.length;
+                          if (personalPhone) {
+                            final mine = widget.link!.mySeat;
+                            final known = mine != null &&
+                                game.players.any((player) => player.id == mine);
+                            if (!known) {
+                              return LinkedSeatPicker(
+                                controller: widget.controller,
+                                link: widget.link!,
+                              );
+                            }
+                            return LinkedSeatView(
+                              controller: widget.controller,
+                              mine: mine!,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          if (widget.link?.center == true && count >= 5) {
+                            return _FourSides(
+                              plan: pokerPlan(count).oriented(
+                                game.seatShift,
+                                count,
+                              ),
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
                           final choice = _layout == _BoardLayout.split && count != 4
                               ? _BoardLayout.phone
                               : _layout;
@@ -503,6 +859,40 @@ class _TableScreenState extends State<TableScreen> {
                             haptic: widget.settings.haptic,
                             showTips: widget.settings.beginnerTips,
                           );
+                          if (choice == _BoardLayout.line &&
+                              count == 3 &&
+                              constraints.maxWidth >= 720 &&
+                              constraints.maxHeight >= 480) {
+                            return _StraightThree(
+                              shift: game.seatShift,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          if (choice == _BoardLayout.round &&
+                              count == 3 &&
+                              constraints.maxWidth >= 720 &&
+                              constraints.maxHeight >= 480) {
+                            return _RoundThree(
+                              shift: game.seatShift,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
+                          if (count == 3 &&
+                              choice != _BoardLayout.stack &&
+                              choice != _BoardLayout.round &&
+                              choice != _BoardLayout.line &&
+                              !explicitList) {
+                            return _FacingThree(
+                              shift: game.seatShift,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
                           if (choice == _BoardLayout.split) {
                             return _SplitQuarters(
                               shift: game.seatShift,
@@ -511,18 +901,17 @@ class _TableScreenState extends State<TableScreen> {
                               showTips: widget.settings.beginnerTips,
                             );
                           }
-                          final autoStack = choice == _BoardLayout.auto &&
-                              count >= 5 &&
-                              count <= 8;
+                          final autoStack =
+                              choice == _BoardLayout.auto && count >= 5;
                           if ((choice == _BoardLayout.stack || autoStack) &&
                               count >= 2 &&
-                              count <= 8 &&
+                              count <= maxTablePlayers &&
                               (forced || !explicitList)) {
                             return stacked();
                           }
                           if (choice == _BoardLayout.phone &&
                               count >= 5 &&
-                              count <= 8) {
+                              count <= maxTablePlayers) {
                             return _FourSides(
                               plan: pokerPlan(count).oriented(
                                 game.seatShift,
@@ -541,10 +930,20 @@ class _TableScreenState extends State<TableScreen> {
                               showTips: widget.settings.beginnerTips,
                             );
                           }
+                          if (count == 4 &&
+                              !explicitList &&
+                              choice != _BoardLayout.stack &&
+                              choice != _BoardLayout.split) {
+                            return _SplitQuarters(
+                              shift: game.seatShift,
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                            );
+                          }
                           if (!explicitList &&
                               !fourSides &&
-                              count >= 3 &&
-                              count <= 4 &&
+                              count == 3 &&
                               choice != _BoardLayout.stack) {
                             return _HorizontalBands(
                               plan: plan,
@@ -563,7 +962,6 @@ class _TableScreenState extends State<TableScreen> {
                               controller: widget.controller,
                               haptic: widget.settings.haptic,
                               showTips: widget.settings.beginnerTips,
-                              height: constraints.maxHeight,
                               focusMode: focusMode,
                               focusPlayerId: focusId,
                               onFocusPlayer: focusMode
@@ -587,6 +985,17 @@ class _TableScreenState extends State<TableScreen> {
                           );
                         },
                       ),
+                          Positioned.fill(
+                            child: Center(
+                              child: buildTableSky(
+                                context,
+                                controller: widget.controller,
+                                onExplain: _explainSky,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -596,6 +1005,46 @@ class _TableScreenState extends State<TableScreen> {
                     right: 12,
                     bottom: 12,
                     child: _CombatCrownAsk(controller: widget.controller),
+                  ),
+                if (_coachLines.isNotEmpty)
+                  Positioned(
+                    left: 12,
+                    right: 12,
+                    top: 64,
+                    child: Material(
+                      elevation: 8,
+                      color: const Color(0xFF1C2430),
+                      borderRadius: BorderRadius.circular(16),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 220),
+                        child: ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+                          children: [
+                            const Text(
+                              'À vous',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
+                              ),
+                            ),
+                            for (final line in _coachLines)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(line),
+                              ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: () =>
+                                    setState(() => _coachLines = const []),
+                                child: const Text('Vu'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 if (_toast != null)
                   Positioned(
@@ -622,9 +1071,13 @@ class _TableScreenState extends State<TableScreen> {
                   ),
               ],
             ),
+              ),
+              ),
             ),
           ),
         ),
+      ),
+      ),
       ),
     );
   }
@@ -637,6 +1090,7 @@ enum _Menu {
   history,
   dayNight,
   tips,
+  link,
   transfer,
   search,
   settings,
@@ -646,6 +1100,8 @@ enum _Menu {
   layoutPhone,
   layoutStack,
   layoutSplit,
+  layoutRound,
+  layoutLine,
   recap,
   rematch,
   reset,
@@ -739,6 +1195,12 @@ class _Bar extends StatelessWidget {
     this.layouts = const [],
     this.currentLayout = _BoardLayout.auto,
     this.onLayout,
+    this.onPhoneMode,
+    this.onTableMode,
+    this.phoneMode = false,
+    this.optionNames = false,
+    this.onOptionNames,
+    this.onCast,
   });
 
   final GameController controller;
@@ -756,39 +1218,81 @@ class _Bar extends StatelessWidget {
   final List<_BoardLayout> layouts;
   final _BoardLayout currentLayout;
   final ValueChanged<_BoardLayout>? onLayout;
+  final VoidCallback? onPhoneMode;
+  final VoidCallback? onTableMode;
+  final bool phoneMode;
+  final bool optionNames;
+  final VoidCallback? onOptionNames;
+  final ValueChanged<CastTone>? onCast;
 
   @override
   Widget build(BuildContext context) {
     final game = controller.game;
-    return SizedBox(
-      height: 52,
-      child: Row(
-        children: [
-          _BarIcon(
-            icon: Icons.arrow_back,
-            tooltip: 'Salon',
-            help: beginnerTips ? tipSalon : null,
-            onPressed: onLeave,
-          ),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Manche ${game.roundNumber}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 520;
+        final slot = wide ? 44.0 : (onPhoneMode != null ? 30.0 : 34.0);
+        return SizedBox(
+          height: 52,
+          child: Row(
+            children: [
+              _BarIcon(
+            slot: slot,
+                icon: Icons.arrow_back,
+                tooltip: 'Salon',
+                help: beginnerTips ? tipSalon : null,
+                onPressed: onLeave,
+              ),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Manche ${game.roundNumber}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: wide ? 15 : 13,
+                      ),
+                    ),
+                    if (game.timersEnabled) ...[
+                      _LiveClocks(controller: controller),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 24),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () {
+                            if (controller.clockPaused) {
+                              controller.resumeClock();
+                            } else {
+                              controller.pauseClock();
+                            }
+                          },
+                          child: Text(
+                            controller.clockPaused ? 'Reprendre' : 'Pause',
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (game.tournament)
+                      const Text(
+                        'Tournoi · compteur visible, sans conseil',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                  ],
                 ),
-                if (game.timersEnabled) _LiveClocks(controller: controller),
-              ],
-            ),
-          ),
+              ),
           _BarIcon(
+            slot: slot,
             icon: Icons.undo,
             tooltip: 'Annuler',
             help: beginnerTips ? tipUndo : null,
@@ -796,34 +1300,86 @@ class _Bar extends StatelessWidget {
             emphasize: true,
           ),
           _BarIcon(
+            slot: slot,
             icon: Icons.redo,
             tooltip: 'Rétablir',
             help: beginnerTips ? tipRedo : null,
             onPressed: canRedo ? onRedo : null,
           ),
           _BarIcon(
+            slot: slot,
             icon: Icons.history,
             tooltip: 'Historique',
             help: beginnerTips ? tipHistory : null,
             onPressed: onHistory,
           ),
           _BarIcon(
+            slot: slot,
             icon: Icons.casino,
             tooltip: 'Dés',
             help: beginnerTips ? tipDice : null,
             onPressed: onDice,
           ),
-          if (layouts.isNotEmpty)
+          PopupMenuButton<CastTone>(
+            tooltip: 'Animations',
+            padding: EdgeInsets.zero,
+            onSelected: onCast,
+            itemBuilder: (context) {
+              final current = sharedCast(controller.game.players);
+              return [
+                for (final choice in CastTone.values)
+                  PopupMenuItem(
+                    value: choice,
+                    child: Text(
+                      choice == current
+                          ? '${castToneLabel(choice)}  · actuel'
+                          : castToneLabel(choice),
+                    ),
+                  ),
+              ];
+            },
+            child: SizedBox(
+              width: slot,
+              height: 48,
+              child: Center(
+                child: CinemaCameraIcon(
+                  color: IconTheme.of(context).color ?? Colors.white,
+                  size: 22,
+                ),
+              ),
+            ),
+          ),
+          if (layouts.isNotEmpty || onPhoneMode != null || onOptionNames != null)
             HelpTip(
               enabled: beginnerTips,
               longPress: false,
               title: tipLayout.title,
               message: tipLayout.message,
-              child: PopupMenuButton<_BoardLayout>(
+              child: PopupMenuButton<Object>(
               tooltip: 'Disposition de l’écran',
               padding: EdgeInsets.zero,
-              onSelected: onLayout,
+              onSelected: (value) {
+                if (value is _BoardLayout) {
+                  onLayout?.call(value);
+                } else if (value == _DisplayExtra.phone) {
+                  onPhoneMode?.call();
+                } else if (value == _DisplayExtra.table) {
+                  onTableMode?.call();
+                } else if (value == _DisplayExtra.names) {
+                  onOptionNames?.call();
+                }
+              },
               itemBuilder: (context) => [
+                if (onOptionNames != null)
+                  PopupMenuItem(
+                    value: _DisplayExtra.names,
+                    child: Text(optionNames ? 'Logos seuls' : 'Logos et noms'),
+                  ),
+                if (onTableMode != null && phoneMode)
+                  const PopupMenuItem(
+                    value: _DisplayExtra.table,
+                    child: Text('La table entière'),
+                  ),
                 for (final layout in layouts)
                   PopupMenuItem(
                     value: layout,
@@ -834,14 +1390,15 @@ class _Bar extends StatelessWidget {
                     ),
                   ),
               ],
-              child: const SizedBox(
-                width: 44,
-                height: 44,
-                child: Icon(Icons.touch_app, size: 22),
+              child: SizedBox(
+                width: slot,
+                height: 48,
+                child: const Icon(Icons.touch_app, size: 22),
               ),
             ),
             ),
           _BarIcon(
+            slot: slot,
             icon: beginnerTips ? Icons.help : Icons.help_outline,
             tooltip: beginnerTips
                 ? 'Désactiver les bulles d’aide'
@@ -849,6 +1406,15 @@ class _Bar extends StatelessWidget {
             onPressed: () => onMenu(_Menu.tips),
             emphasize: beginnerTips,
           ),
+          if (onPhoneMode != null)
+            _BarIcon(
+              slot: slot,
+              icon: Icons.handshake,
+              tooltip: 'Relier les téléphones',
+              help: beginnerTips ? tipShare : null,
+              onPressed: onPhoneMode,
+              emphasize: phoneMode,
+            ),
           HelpTip(
             enabled: beginnerTips,
             longPress: false,
@@ -892,10 +1458,11 @@ class _Bar extends StatelessWidget {
                 value: _Menu.transfer,
                 child: Text('Transférer (QR)'),
               ),
-              const PopupMenuItem(
-                value: _Menu.search,
-                child: Text('Recherche de carte'),
-              ),
+              if (!controller.game.tournament)
+                const PopupMenuItem(
+                  value: _Menu.search,
+                  child: Text('Recherche de carte'),
+                ),
               const PopupMenuItem(
                 value: _Menu.settings,
                 child: Text('Réglages'),
@@ -905,6 +1472,8 @@ class _Bar extends StatelessWidget {
                   value: switch (layout) {
                     _BoardLayout.stack => _Menu.layoutStack,
                     _BoardLayout.split => _Menu.layoutSplit,
+                    _BoardLayout.round => _Menu.layoutRound,
+                    _BoardLayout.line => _Menu.layoutLine,
                     _ => _Menu.layoutPhone,
                   },
                   child: Text(
@@ -940,24 +1509,86 @@ class _Bar extends StatelessWidget {
               ),
               const PopupMenuItem(value: _Menu.about, child: Text('À propos')),
             ],
+            child: SizedBox(
+              width: slot,
+              height: 48,
+              child: const Icon(Icons.more_vert, size: 22),
+            ),
           ),
           ),
         ],
       ),
     );
+      },
+    );
   }
 }
 
+Widget buildTableSky(
+  BuildContext context, {
+  required GameController controller,
+  VoidCallback? onExplain,
+}) {
+  final names = OptionCaption.of(context);
+  return LayoutBuilder(
+    builder: (context, constraints) {
+      final maxH = constraints.maxHeight;
+      final tight = maxH.isFinite && maxH < 64;
+      final sky = GestureDetector(
+        onLongPress: onExplain,
+        child: TableSky(
+          state: controller.game.dayState,
+          names: names && !tight,
+          disc: tight ? 24 : 30,
+          onSun: () => _toggleSky(controller, DayState.day),
+          onMoon: () => _toggleSky(controller, DayState.night),
+        ),
+      );
+      if (!maxH.isFinite) return sky;
+      return FittedBox(fit: BoxFit.scaleDown, child: sky);
+    },
+  );
+}
+
+const _skyLane = skyLane;
+
+/// Deux moitiés de même hauteur, le trou du soleil et de la lune au milieu.
+/// Le nombre de joueurs change ce qu’il y a au-dessus et en dessous, pas le centre.
+Widget centerSplit(List<Widget> seats) {
+  final mid = seats.length ~/ 2;
+  final above = seats.sublist(0, mid);
+  final below = seats.sublist(mid);
+  Widget pile(List<Widget> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [for (final item in items) Expanded(child: item)],
+    );
+  }
+
+  return Column(
+    children: [
+      Expanded(child: pile(above)),
+      const SizedBox(height: _skyLane),
+      Expanded(child: pile(below)),
+    ],
+  );
+}
+
+void _toggleSky(GameController controller, DayState next) {
+  controller.setDay(
+    controller.game.dayState == next ? DayState.unset : next,
+  );
+}
+
 String _formatClock(Duration d) {
-  final total = d.inSeconds.clamp(0, 99 * 3600);
+  final negative = d.isNegative;
+  final total = d.inSeconds.abs().clamp(0, 99 * 3600);
   final m = (total ~/ 60).toString().padLeft(2, '0');
   final s = (total % 60).toString().padLeft(2, '0');
-  if (total >= 3600) {
-    final h = total ~/ 3600;
-    final mm = ((total % 3600) ~/ 60).toString().padLeft(2, '0');
-    return '$h:$mm:$s';
-  }
-  return '$m:$s';
+  final text = total >= 3600
+      ? '${total ~/ 3600}:${((total % 3600) ~/ 60).toString().padLeft(2, '0')}:$s'
+      : '$m:$s';
+  return negative ? '-$text' : text;
 }
 
 class _LiveClocks extends StatefulWidget {
@@ -1034,6 +1665,7 @@ class _BarIcon extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
+    this.slot = 34,
     this.emphasize = false,
     this.help,
   });
@@ -1041,6 +1673,7 @@ class _BarIcon extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
+  final double slot;
   final bool emphasize;
   final OptionTip? help;
 
@@ -1050,15 +1683,16 @@ class _BarIcon extends StatelessWidget {
     final button = IconButton(
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(
-        minWidth: 44,
-        minHeight: 44,
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        padding: EdgeInsets.zero,
+        minimumSize: Size(slot, slot),
+        fixedSize: Size(slot, 48),
       ),
-      padding: EdgeInsets.zero,
       onPressed: onPressed,
       icon: Icon(
         icon,
-        size: emphasize ? 28 : 22,
+        size: emphasize ? 24 : 20,
         color: emphasize && enabled ? accentGold : null,
       ),
     );
@@ -1073,7 +1707,7 @@ class _BarIcon extends StatelessWidget {
   }
 }
 
-class _VictoryBanner extends StatelessWidget {
+class _VictoryBanner extends StatefulWidget {
   const _VictoryBanner({
     required this.text,
     required this.onRematch,
@@ -1087,30 +1721,213 @@ class _VictoryBanner extends StatelessWidget {
   final VoidCallback onRecap;
 
   @override
+  State<_VictoryBanner> createState() => _VictoryBannerState();
+}
+
+class _VictoryBannerState extends State<_VictoryBanner>
+    with TickerProviderStateMixin {
+  late final AnimationController _arrive;
+  late final AnimationController _glow;
+  var _style = FinaleStyle.mythic;
+  var _bound = false;
+  Timer? _hold;
+
+  @override
+  void initState() {
+    super.initState();
+    _arrive = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 560),
+    );
+    _glow = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = FinaleScope.styleOf(context);
+    if (_bound && next == _style) return;
+    _style = next;
+    _bound = true;
+    _hold?.cancel();
+    _glow.stop();
+    _glow.value = 0;
+    if (next == FinaleStyle.still ||
+        next == FinaleStyle.lean ||
+        next == FinaleStyle.carbon ||
+        next == FinaleStyle.seal) {
+      _arrive.value = 1;
+      return;
+    }
+    if (next == FinaleStyle.mythic) {
+      _arrive.value = 0;
+      _hold = Timer(const Duration(milliseconds: 120), () {
+        if (!mounted || _style != FinaleStyle.mythic) return;
+        _arrive.forward();
+        _glow.forward();
+      });
+      return;
+    }
+    _arrive.duration = next == FinaleStyle.lotus
+        ? const Duration(milliseconds: 420)
+        : const Duration(milliseconds: 560);
+    if (!_arrive.isCompleted) _arrive.forward();
+  }
+
+  @override
+  void dispose() {
+    _hold?.cancel();
+    _arrive.dispose();
+    _glow.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: surface,
-        border: Border(
-          bottom: BorderSide(color: accent.withValues(alpha: 0.45)),
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+    return AnimatedBuilder(
+      animation: Listenable.merge([_arrive, _glow]),
+      builder: (context, child) {
+        final glow = _glow.value;
+        final arrive = _style == FinaleStyle.mythic
+            ? Curves.easeOutBack.transform(_arrive.value)
+            : _style == FinaleStyle.lotus
+            ? Curves.easeInOutCubic.transform(_arrive.value)
+            : Curves.easeOut.transform(_arrive.value);
+        final flash = _style == FinaleStyle.mythic
+            ? (1 - Curves.easeOut.transform(_arrive.value)) * 0.22
+            : 0.0;
+        final (Color wash, Color line, List<BoxShadow> shade) = switch (_style) {
+          FinaleStyle.mythic => (
+            accentGold.withValues(alpha: 0.28 + 0.22 * glow + flash),
+            sacreGoldLight.withValues(alpha: 0.55 + 0.35 * glow),
+            [
+              BoxShadow(
+                color: sacreGoldDeep.withValues(alpha: 0.35 + 0.2 * glow),
+                blurRadius: 16,
+                offset: const Offset(0, 3),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Row(
+          FinaleStyle.lotus => (
+            epitaphWarm.withValues(alpha: 0.08),
+            epitaphWarm.withValues(alpha: 0.7),
+            const [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          FinaleStyle.carbon => (
+            chiselEdge.withValues(alpha: 0.06),
+            chiselEdge.withValues(alpha: 0.7),
+            const <BoxShadow>[],
+          ),
+          _ => (
+            accentGold.withValues(alpha: 0.08),
+            accentGold.withValues(alpha: 0.45),
+            const <BoxShadow>[],
+          ),
+        };
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(wash, surface),
+            border: Border(bottom: BorderSide(color: line, width: 1.5)),
+            boxShadow: shade,
+          ),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+          child: Stack(
+            children: [
+              if (_style == FinaleStyle.mythic)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: VictorySweepPainter(travel: _glow.value),
+                    ),
+                  ),
+                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Transform.scale(
+                    scale: _style == FinaleStyle.mythic
+                        ? 1 + (1 - arrive) * 0.16
+                        : 1,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                      widget.text,
+                      textAlign: TextAlign.center,
+                      softWrap: false,
+                      style: switch (_style) {
+                        FinaleStyle.mythic => const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 22,
+                          height: 1.1,
+                          letterSpacing: 0.6,
+                          color: sacreGoldLight,
+                          shadows: [
+                            Shadow(color: sacreGoldDeep, offset: Offset(0, 2)),
+                            Shadow(color: sacreGoldLight, blurRadius: 8),
+                          ],
+                        ),
+                        FinaleStyle.lotus => const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 22,
+                          height: 1.1,
+                          letterSpacing: 0.2,
+                          color: epitaphPaper,
+                          shadows: [
+                            Shadow(
+                              color: Color(0xCC000000),
+                              offset: Offset(0, 1),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        FinaleStyle.carbon => const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                          height: 1.1,
+                          letterSpacing: 1.1,
+                          color: chiselSteel,
+                          shadows: [
+                            Shadow(color: Color(0xFF000000), offset: Offset(0, 1)),
+                          ],
+                        ),
+                        _ => const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                          height: 1.1,
+                          color: Color(0xFFFFF6E8),
+                        ),
+                      },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  child!,
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+      child: Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: onRecap,
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: widget.onRecap,
                   child: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text('Récap'),
@@ -1120,7 +1937,12 @@ class _VictoryBanner extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: FilledButton(
-                  onPressed: onRematch,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: widget.onRematch,
                   child: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text('Revanche'),
@@ -1130,7 +1952,12 @@ class _VictoryBanner extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: onZero,
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: widget.onZero,
                   child: const FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Text('À zéro'),
@@ -1138,8 +1965,6 @@ class _VictoryBanner extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ],
       ),
     );
   }
@@ -1175,7 +2000,9 @@ class _TurnTimerBarState extends State<_TurnTimerBar> {
   Widget build(BuildContext context) {
     final game = widget.controller.game;
     if (game.timerMode == TimerMode.chess) {
-      final bankSec = widget.controller.activeBankRemaining.inSeconds;
+      final active = game.players[game.activeIndex];
+      final bank = widget.controller.activeBankRemaining;
+      final bankSec = bank.inSeconds;
       final total = game.chessBankSeconds.clamp(1, 6 * 3600);
       final remaining = (bankSec / total).clamp(0.0, 1.0);
       final low = bankSec < 60;
@@ -1196,11 +2023,35 @@ class _TurnTimerBarState extends State<_TurnTimerBar> {
                     : (remaining < 0.25 ? dangerWarn : accent),
               ),
             ),
+            const SizedBox(height: 2),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final player in game.players)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: Text(
+                        '${player.name} ${_formatClock(player.id == active.id ? bank : Duration(milliseconds: player.clockBankMs))}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: player.id == active.id
+                              ? FontWeight.w800
+                              : FontWeight.w500,
+                          color: player.id == active.id
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             if (empty)
               const Padding(
                 padding: EdgeInsets.only(top: 2),
                 child: Text(
-                  'Banque épuisée — passez la main ?',
+                  'Banque épuisée — le dépassement reste compté',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 11,
@@ -1475,8 +2326,12 @@ class _PlanePanel extends StatelessWidget {
               ),
             ),
             TextButton(
+              onPressed: controller.rollPlanarDie,
+              child: Text('Dé ${game.planarRolls}'),
+            ),
+            TextButton(
               onPressed: controller.planeswalk,
-              child: const Text('Marcher'),
+              child: Text(game.currentIsPhenomenon ? 'Résoudre' : 'Marcher'),
             ),
             TextButton(
               onPressed: () => controller.flash(game.currentPlaneChaos),
@@ -1565,7 +2420,8 @@ class _BountyPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final game = controller.game;
-    final card = game.currentBounty;
+    final active = game.players[game.activeIndex];
+    final card = game.bountyFor(active);
     return Material(
       color: const Color(0xFF2A2418),
       borderRadius: BorderRadius.circular(12),
@@ -1578,7 +2434,7 @@ class _BountyPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Prime Nv.${game.bountyLevel + 1} · ${card.name}',
+                    '${active.name} · ${card.name}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800),
@@ -1594,10 +2450,6 @@ class _BountyPanel extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
-            TextButton(
-              onPressed: controller.raiseBounty,
-              child: const Text('↑ Niveau'),
             ),
             TextButton(
               onPressed: () {
@@ -1618,7 +2470,6 @@ class _ListTable extends StatelessWidget {
     required this.controller,
     required this.haptic,
     required this.showTips,
-    required this.height,
     this.focusMode = false,
     this.focusPlayerId,
     this.onFocusPlayer,
@@ -1627,7 +2478,6 @@ class _ListTable extends StatelessWidget {
   final GameController controller;
   final bool haptic;
   final bool showTips;
-  final double height;
   final bool focusMode;
   final String? focusPlayerId;
   final ValueChanged<String>? onFocusPlayer;
@@ -1682,27 +2532,9 @@ class _ListTable extends StatelessWidget {
         ],
       );
     }
-    final each = (height / players.length).clamp(280.0, 520.0);
-    if (players.length <= 2 && each * players.length <= height + 1) {
-      return Column(
-        children: [
-          for (final player in players) Expanded(child: _seat(player.id)),
-        ],
-      );
-    }
-    return ListView.builder(
-      itemCount: players.length,
-      itemBuilder: (context, index) {
-        final player = players[index];
-        final pane = SeatPanes.paneOf(context, player.id);
-        final extra = seatOptionsExtent(
-          controller.game,
-          player,
-          full: pane != ScorePane.foes,
-        );
-        return SizedBox(height: each + extra, child: _seat(player.id));
-      },
-    );
+    return centerSplit([
+      for (final player in players) _seat(player.id),
+    ]);
   }
 
   Widget _seat(String id) {
@@ -1737,46 +2569,9 @@ class _HorizontalBands extends StatelessWidget {
       for (final index in plan.north) (index, 2),
       for (final index in plan.south) (index, 0),
     ];
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Sur un grand écran, les bandes se partagent la hauteur : plus facile
-        // à toucher. Sinon chacune garde une taille confortable et on défile.
-        final players = controller.game.players;
-        double comfortOf(int index) => switch (SeatPanes.paneOf(
-          context,
-          players[index].id,
-        )) {
-          ScorePane.both => 452.0,
-          ScorePane.own => 360.0,
-          ScorePane.foes => 220.0,
-        };
-        final need = seats.fold<double>(
-          0,
-          (sum, seat) => sum + comfortOf(seat.$1),
-        );
-        final fill = seats.length < 5 || constraints.maxHeight >= need;
-        if (fill) {
-          return Column(
-            children: [
-              for (final seat in seats)
-                Expanded(
-                  flex: comfortOf(seat.$1).round(),
-                  child: _band(seat.$1, seat.$2),
-                ),
-            ],
-          );
-        }
-        return ListView(
-          children: [
-            for (final seat in seats)
-              SizedBox(
-                height: comfortOf(seat.$1),
-                child: _band(seat.$1, seat.$2),
-              ),
-          ],
-        );
-      },
-    );
+    return centerSplit([
+      for (final seat in seats) _band(seat.$1, seat.$2),
+    ]);
   }
 
   Widget _band(int index, int turns) {
@@ -1813,10 +2608,105 @@ class _SplitQuarters extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final players = controller.game.players;
-    Widget cell(int slot) {
+    Widget cell(int slot, int turns) {
       final index = (slot + shift) % players.length;
-      return Padding(
-        padding: const EdgeInsets.all(3),
+      return _RotatedSeat(
+        quarterTurns: turns,
+        child: Padding(
+          padding: const EdgeInsets.all(2),
+          child: PlayerPanel(
+            controller: controller,
+            playerId: players[index].id,
+            haptic: haptic,
+            showTips: showTips,
+            band: true,
+          ),
+        ),
+      );
+    }
+
+    // Sens des aiguilles d’une montre, comme le tour en Magic :
+    // haut gauche, haut droite, bas droite, bas gauche.
+    return Column(
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: cell(0, 2)),
+              Expanded(child: cell(1, 2)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(child: cell(3, 0)),
+              Expanded(child: cell(2, 0)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Trois joueurs qui se font face : un en haut, deux collés en bas.
+class _FacingThree extends StatelessWidget {
+  const _FacingThree({
+    required this.shift,
+    required this.controller,
+    required this.haptic,
+    required this.showTips,
+  });
+
+  final int shift;
+  final GameController controller;
+  final bool haptic;
+  final bool showTips;
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = phonePlan(3).oriented(shift, 3);
+    return Column(
+      children: [
+        Expanded(
+          child: _seat(
+            plan.north.first,
+            2,
+            const EdgeInsets.fromLTRB(2, 2, 2, 0),
+          ),
+        ),
+        const SizedBox(height: _skyLane),
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: _seat(
+                  plan.south[0],
+                  0,
+                  const EdgeInsets.fromLTRB(2, 0, 0, 2),
+                ),
+              ),
+              Expanded(
+                child: _seat(
+                  plan.south[1],
+                  0,
+                  const EdgeInsets.fromLTRB(0, 0, 2, 2),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _seat(int index, int turns, EdgeInsets padding) {
+    final players = controller.game.players;
+    return _RotatedSeat(
+      quarterTurns: turns,
+      child: Padding(
+        padding: padding,
         child: PlayerPanel(
           controller: controller,
           playerId: players[index].id,
@@ -1824,30 +2714,202 @@ class _SplitQuarters extends StatelessWidget {
           showTips: showTips,
           band: true,
         ),
-      );
-    }
-
-    return Column(
-      children: [
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(child: cell(0)),
-              Expanded(child: cell(1)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Row(
-            children: [
-              Expanded(child: cell(2)),
-              Expanded(child: cell(3)),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
+}
+
+/// Trois places dans le même sens : colonne si l’écran est haut, ligne s’il est large.
+class _StraightThree extends StatelessWidget {
+  const _StraightThree({
+    required this.shift,
+    required this.controller,
+    required this.haptic,
+    required this.showTips,
+  });
+
+  final int shift;
+  final GameController controller;
+  final bool haptic;
+  final bool showTips;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final across = constraints.maxWidth >= constraints.maxHeight;
+        final seats = [
+          for (var slot = 0; slot < 3; slot++)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: _seat(slot, across, constraints),
+              ),
+            ),
+        ];
+        return across
+            ? Row(children: seats)
+            : Column(children: seats);
+      },
+    );
+  }
+
+  Widget _seat(int slot, bool across, BoxConstraints constraints) {
+    final players = controller.game.players;
+    final seatW = across ? constraints.maxWidth / 3 : constraints.maxWidth;
+    final seatH = across ? constraints.maxHeight : constraints.maxHeight / 3;
+    final panel = PlayerPanel(
+      controller: controller,
+      playerId: players[(slot + shift) % 3].id,
+      haptic: haptic,
+      showTips: showTips,
+      band: seatW < 280 || seatH < 300,
+    );
+    if (slot != 1) return panel;
+    return LifeBelowCenter(child: panel);
+  }
+}
+
+/// Trois places sur un cercle, à 120 degrés, le centre libre pour le jour et la nuit.
+class _RoundThree extends StatelessWidget {
+  const _RoundThree({
+    required this.shift,
+    required this.controller,
+    required this.haptic,
+    required this.showTips,
+  });
+
+  final int shift;
+  final GameController controller;
+  final bool haptic;
+  final bool showTips;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final boardW = constraints.maxWidth;
+        final boardH = constraints.maxHeight;
+        final box = _roundSeatBox(boardW, boardH);
+        final cx = boardW / 2;
+        final cy = boardH / 2;
+        // Sens horaire : bas, haut gauche, haut droite.
+        const sin60 = 0.866025403784;
+        const cos60 = 0.5;
+        final seats = <(double, double, double)>[
+          (0, box.radius, 0),
+          (-box.radius * sin60, -box.radius * cos60, 2 * math.pi / 3),
+          (box.radius * sin60, -box.radius * cos60, -2 * math.pi / 3),
+        ];
+        final cosA = math.cos(2 * math.pi / 3).abs();
+        final sinA = math.sin(2 * math.pi / 3).abs();
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            for (var slot = 0; slot < seats.length; slot++)
+              _placedSeat(
+                cx: cx,
+                cy: cy,
+                dx: seats[slot].$1,
+                dy: seats[slot].$2,
+                angle: seats[slot].$3,
+                seatW: box.width,
+                seatH: box.height,
+                boundsW: seats[slot].$3 == 0
+                    ? box.width
+                    : box.width * cosA + box.height * sinA,
+                boundsH: seats[slot].$3 == 0
+                    ? box.height
+                    : box.width * sinA + box.height * cosA,
+                playerIndex: (slot + shift) % 3,
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _placedSeat({
+    required double cx,
+    required double cy,
+    required double dx,
+    required double dy,
+    required double angle,
+    required double seatW,
+    required double seatH,
+    required double boundsW,
+    required double boundsH,
+    required int playerIndex,
+  }) {
+    final players = controller.game.players;
+    final panel = PlayerPanel(
+      controller: controller,
+      playerId: players[playerIndex].id,
+      haptic: haptic,
+      showTips: showTips,
+      band: true,
+    );
+    return Positioned(
+      left: cx + dx - boundsW / 2,
+      top: cy + dy - boundsH / 2,
+      width: boundsW,
+      height: boundsH,
+      child: Center(
+        child: SeatReading(
+          quarterTurns: 0,
+          turnsRadians: angle.abs() < 0.01 ? null : angle,
+          child: Transform.rotate(
+            angle: angle,
+            child: SizedBox(width: seatW, height: seatH, child: panel),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundSeatBox {
+  const _RoundSeatBox({
+    required this.width,
+    required this.height,
+    required this.radius,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+}
+
+_RoundSeatBox _roundSeatBox(double boardW, double boardH) {
+  const pad = 10.0;
+  const gap = 16.0;
+  const sin60 = 0.866025403784;
+  const cos60 = 0.5;
+
+  for (var step = 0; step <= 36; step++) {
+    final scale = 1 - step * 0.025;
+    final sw = math.min(boardW * 0.30, 460.0) * scale;
+    final sh = math.min(boardH * 0.34, 280.0) * scale;
+    final hole = math.max(84.0, (0.433 * sw + gap) / 1.5 + 4);
+    final radius = sh / 2 + hole;
+    final boundsW = sw * cos60 + sh * sin60;
+    final boundsH = sw * sin60 + sh * cos60;
+    final upperBottom = -radius * cos60 + boundsH / 2;
+    final onBoard = sw / 2 + pad <= boardW / 2 &&
+        radius + sh / 2 + pad <= boardH / 2 &&
+        radius * sin60 + boundsW / 2 + pad <= boardW / 2 &&
+        radius * cos60 + boundsH / 2 + pad <= boardH / 2;
+    final apart = 2 * radius * sin60 >= boundsW + gap;
+    final above = upperBottom <= hole - gap;
+    if (onBoard && apart && above && sw >= 140 && sh >= 110) {
+      return _RoundSeatBox(width: sw, height: sh, radius: radius);
+    }
+  }
+  return _RoundSeatBox(
+    width: math.max(140.0, boardW * 0.2),
+    height: math.max(110.0, boardH * 0.22),
+    radius: math.min(boardH, boardW) * 0.28,
+  );
 }
 
 class _TwoSides extends StatelessWidget {
@@ -1867,24 +2929,27 @@ class _TwoSides extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        if (plan.north.isNotEmpty)
-          Expanded(
-            child: Row(
-              children: [
-                for (final index in plan.north)
-                  Expanded(child: _turned(context, index, 2)),
-              ],
-            ),
-          ),
-        if (plan.south.isNotEmpty)
-          Expanded(
-            child: Row(
-              children: [
-                for (final index in plan.south)
-                  Expanded(child: _turned(context, index, 0)),
-              ],
-            ),
-          ),
+        Expanded(
+          child: plan.north.isEmpty
+              ? const SizedBox.shrink()
+              : Row(
+                  children: [
+                    for (final index in plan.north)
+                      Expanded(child: _turned(context, index, 2)),
+                  ],
+                ),
+        ),
+        const SizedBox(height: _skyLane),
+        Expanded(
+          child: plan.south.isEmpty
+              ? const SizedBox.shrink()
+              : Row(
+                  children: [
+                    for (final index in plan.south)
+                      Expanded(child: _turned(context, index, 0)),
+                  ],
+                ),
+        ),
       ],
     );
   }
@@ -1931,6 +2996,64 @@ class _FourSides extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        final single =
+            plan.north.length <= 1 &&
+            plan.south.length <= 1 &&
+            plan.westTopToBottom.length <= 1 &&
+            plan.eastTopToBottom.length <= 1;
+        if (single) {
+          final width = constraints.maxWidth;
+          final height = constraints.maxHeight;
+          var band = math.min(height * 0.28, 150.0);
+          var side = math.min(width * 0.24, 220.0);
+          if (band * 2 + 88 > height) {
+            band = math.max(48.0, (height - 88) / 2);
+          }
+          if (side * 2 + 72 > width) {
+            side = math.max(56.0, (width - 72) / 2);
+          }
+          return Column(
+            children: [
+              if (plan.north.isNotEmpty)
+                SizedBox(
+                  height: band,
+                  child: Row(
+                    children: [
+                      for (final index in plan.north)
+                        Expanded(child: _seat(index, 2)),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: Row(
+                  children: [
+                    if (plan.westTopToBottom.isNotEmpty)
+                      SizedBox(
+                        width: side,
+                        child: _sideColumn(plan.westTopToBottom, 1),
+                      ),
+                    const Expanded(child: SizedBox.expand()),
+                    if (plan.eastTopToBottom.isNotEmpty)
+                      SizedBox(
+                        width: side,
+                        child: _sideColumn(plan.eastTopToBottom, 3),
+                      ),
+                  ],
+                ),
+              ),
+              if (plan.south.isNotEmpty)
+                SizedBox(
+                  height: band,
+                  child: Row(
+                    children: [
+                      for (final index in plan.south)
+                        Expanded(child: _seat(index, 0)),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        }
         // En paysage, la hauteur du milieu devient la largeur du joueur tourné.
         // On la garde assez grande, et on élargit les colonnes pour sa hauteur.
         final tight = constraints.maxHeight < 520;
@@ -1960,12 +3083,7 @@ class _FourSides extends StatelessWidget {
                     Expanded(flex: 5, child: _sideColumn(plan.westTopToBottom, 1)),
                   const Expanded(
                     flex: 3,
-                    child: Center(
-                      child: Text(
-                        'Sens horaire',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
+                    child: SizedBox.expand(),
                   ),
                   if (tight)
                     SizedBox(width: side, child: _sideColumn(plan.eastTopToBottom, 3))

@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
+import 'package:mtg_table/domain/planar_decks.dart';
 import 'package:mtg_table/domain/recap.dart';
 import 'package:mtg_table/domain/stats.dart';
 
@@ -44,14 +45,15 @@ void main() {
     expect(player.treacheryRevealed, isTrue);
   });
 
-  test('claim bounty journalise et remet le niveau à 0', () {
+  test('claim bounty passe au contrat du joueur', () {
     final game = Game.start(playerCount: 2, bounty: true);
-    game.bountyLevel = 2;
     final controller = GameController(game: game);
     addTearDown(controller.dispose);
-    final id = game.players.first.id;
-    controller.claimBounty(id);
-    expect(game.bountyLevel, 0);
+    final player = game.players.first;
+    final before = player.bountyIndex;
+    controller.claimBounty(player.id);
+    expect(player.bountyIndex, (before + 1) % officialBounties.length);
+    expect(game.players[1].bountyIndex, 1);
     expect(controller.lifeFeed.first, contains('prime'));
     expect(controller.canUndo, isTrue);
   });
@@ -60,6 +62,7 @@ void main() {
     final game = Game.start(
       playerCount: 2,
       timerMode: TimerMode.chess,
+      timersEnabled: true,
       chessBankSeconds: 120,
     );
     final controller = GameController(game: game);

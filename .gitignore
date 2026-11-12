@@ -54,3 +54,8 @@ android/local.properties
 key.properties
 .env
 .env.*
+
+# Images d’effets, licences propres. Elles restent dans l’application,
+# pas dans un dépôt public.
+/assets/vfx/*.png
+/assets/sfx/*
