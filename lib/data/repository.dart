@@ -246,6 +246,12 @@ class AppRepository {
 
   Map<String, dynamic>? _decode(String? raw) {
     if (raw == null || raw.isEmpty) return null;
+    // Plafond local : une préférence corrompue ou injectée ne doit pas
+    // saturer la mémoire au décodage.
+    if (raw.length > 2_000_000) {
+      AppLog.warn('prefs decode: trop volumineux (${raw.length})');
+      return null;
+    }
     try {
       final value = jsonDecode(raw);
       if (value is Map<String, dynamic>) return value;

@@ -189,6 +189,54 @@ void main() {
     await check(const Size(1280, 800));
   });
 
+  testWidgets(
+    '4 joueurs téléphone : les compteurs remplissent le rectangle',
+    (tester) async {
+      final controller = sample();
+      addTearDown(controller.dispose);
+      await pumpTable(tester, const Size(800, 360), controller);
+      final panels = find.byType(PlayerPanel);
+      expect(panels, findsNWidgets(4));
+      // Prend le siège bas (non tourné) pour des mesures d’écran stables.
+      final upright = [
+        for (var i = 0; i < 4; i++) tester.getRect(panels.at(i)),
+      ].reduce((a, b) => a.top >= b.top ? a : b);
+      final jump = find.text('−5');
+      expect(jump, findsWidgets);
+      var widestJump = 0.0;
+      for (var i = 0; i < jump.evaluate().length; i++) {
+        final text = jump.at(i);
+        final textRect = tester.getRect(text);
+        if (!upright.inflate(2).overlaps(textRect)) continue;
+        final button = find.ancestor(
+          of: text,
+          matching: find.byType(Material),
+        );
+        if (button.evaluate().isEmpty) continue;
+        final w = tester.getRect(button.first).width;
+        if (w > widestJump) widestJump = w;
+      }
+      // Sans FittedBox, −5 s’étire (~1/4 du siège) au lieu d’un petit bloc.
+      expect(widestJump, greaterThan(upright.width * 0.15));
+      final cmd = find.text('Cdt');
+      expect(cmd, findsWidgets);
+      var widestCmd = 0.0;
+      for (var i = 0; i < cmd.evaluate().length; i++) {
+        final text = cmd.at(i);
+        final textRect = tester.getRect(text);
+        if (!upright.inflate(2).overlaps(textRect)) continue;
+        final box = find.ancestor(
+          of: text,
+          matching: find.byType(DecoratedBox),
+        );
+        if (box.evaluate().isEmpty) continue;
+        final w = tester.getRect(box.first).width;
+        if (w > widestCmd) widestCmd = w;
+      }
+      expect(widestCmd, greaterThan(upright.width * 0.55));
+    },
+  );
+
   testWidgets('le voile jour et nuit couvre chaque joueur', (tester) async {
     Future<void> check(int count, Size size) async {
       final controller = GameController(

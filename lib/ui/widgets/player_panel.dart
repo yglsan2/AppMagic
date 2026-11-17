@@ -2968,40 +2968,34 @@ class _ReceivedPickState extends State<_ReceivedPick> {
     final taken = seat.damageTaken[hit.commander.id] ?? 0;
     final remaining = game.commanderRemaining(seat, hit.commander.id);
     final waiting = several && chosen == null;
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: _CmdTick(
-          controller: widget.controller,
-          haptic: widget.haptic,
-          owner: hit.owner,
-          commander: hit.commander,
-          defender: seat,
-          taken: waiting ? null : taken,
-          remaining: waiting ? null : remaining,
-          label: 'Cdt',
-          note: waiting
-              ? 'Choisir'
-              : several
-              ? '${commanderChipLabel(hit.owner, hit.commander)} · reste $remaining'
-              : null,
-          onChoose: () => _choose(context),
-          onDelta: (delta) {
-            if (waiting) {
-              _choose(context);
-              return;
-            }
-            widget.controller.addCommanderDamage(
-              defenderId: seat.id,
-              commanderId: hit.commander.id,
-              delta: delta,
-            );
-            buzz(widget.haptic);
-          },
-        ),
-      ),
+    return _CmdTick(
+      controller: widget.controller,
+      haptic: widget.haptic,
+      owner: hit.owner,
+      commander: hit.commander,
+      defender: seat,
+      taken: waiting ? null : taken,
+      remaining: waiting ? null : remaining,
+      expand: true,
+      label: 'Cdt',
+      note: waiting
+          ? 'Choisir'
+          : several
+          ? '${commanderChipLabel(hit.owner, hit.commander)} · reste $remaining'
+          : null,
+      onChoose: () => _choose(context),
+      onDelta: (delta) {
+        if (waiting) {
+          _choose(context);
+          return;
+        }
+        widget.controller.addCommanderDamage(
+          defenderId: seat.id,
+          commanderId: hit.commander.id,
+          delta: delta,
+        );
+        buzz(widget.haptic);
+      },
     );
   }
 }
@@ -3021,6 +3015,7 @@ class _CmdTick extends StatelessWidget {
     this.label,
     this.note,
     this.onChoose,
+    this.expand = false,
   });
 
   final GameController controller;
@@ -3035,6 +3030,9 @@ class _CmdTick extends StatelessWidget {
   final String? note;
   final VoidCallback? onChoose;
   final void Function(int delta) onDelta;
+
+  /// Remplit la largeur du bandeau (4 joueurs téléphone).
+  final bool expand;
 
   void _openMemory(BuildContext context) {
     final who = defender;
@@ -3060,168 +3058,206 @@ class _CmdTick extends StatelessWidget {
     final warn = remaining != null && remaining! <= 6 && hint == null;
     final lethal = remaining != null && remaining! <= 0 && hint == null;
     final line = note ?? (detail == null ? number : '$number · $detail');
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: lethal ? const Color(0xFF3A1822) : panelInk,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: lethal ? dangerCrit : color, width: 1.4),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-          RepeatTap(
-            onTick: () => onDelta(1),
-            child: SizedBox(
-              key: defender == null
-                  ? null
-                  : ValueKey('chip-minus-${defender!.id}-${commander.id}'),
-              width: 36,
-              height: 44,
-              child: const ColoredBox(
-                color: Color(0xFF6A2A38),
-                child: Center(
-                  child: Text(
-                    '−',
-                    style: TextStyle(
-                      fontSize: 22,
-                      height: 1,
-                      color: Color(0xFFFFE4E8),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          RepeatTap(
-            onTick: () => onDelta(5),
-            child: const SizedBox(
-              width: 34,
-              height: 44,
-              child: ColoredBox(
-                color: Color(0xFF421824),
-                child: Center(
-                  child: Text(
-                    '−5',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFFFE4E8),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: onChoose ?? () => _openMemory(context),
-            onLongPress: () => _openMemory(context),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 72, maxWidth: 120),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircleAvatar(
-                          radius: 7,
-                          backgroundColor: color,
-                          child: Text(
-                            playerInitial(owner.name),
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 8,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
+    final labelBlock = LayoutBuilder(
+      builder: (context, box) {
+        final room = box.maxWidth.isFinite ? box.maxWidth : 120.0;
+        final showMarks = room >= 52;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  if (showMarks) ...[
+                    CircleAvatar(
+                      radius: 7,
+                      backgroundColor: color,
+                      child: Text(
+                        playerInitial(owner.name),
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
                         ),
-                        const SizedBox(width: 3),
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        if (onChoose != null)
-                          const Icon(
-                            Icons.keyboard_arrow_down,
-                            size: 16,
-                            color: Colors.white70,
-                          ),
-                      ],
-                    ),
-                    Text(
-                      line,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: lifeStyle(
-                        13,
-                        lethal
-                            ? const Color(0xFFFFB4BC)
-                            : warn
-                            ? const Color(0xFFFFC46B)
-                            : Colors.white,
                       ),
                     ),
+                    const SizedBox(width: 3),
                   ],
-                ),
-              ),
-            ),
-          ),
-          RepeatTap(
-            onTick: () => onDelta(-5),
-            child: const SizedBox(
-              width: 34,
-              height: 44,
-              child: ColoredBox(
-                color: _gainJump,
-                child: Center(
-                  child: Text(
-                    '+5',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFE8FFF2),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
-          ),
-          RepeatTap(
-            onTick: () => onDelta(-1),
-            child: const SizedBox(
-              width: 36,
-              height: 44,
-              child: ColoredBox(
-                color: _gainStep,
-                child: Center(
-                  child: Text(
-                    '+',
-                    style: TextStyle(
-                      fontSize: 22,
-                      height: 1,
-                      color: Color(0xFFE8FFF2),
+                  if (onChoose != null && showMarks)
+                    const Icon(
+                      Icons.keyboard_arrow_down,
+                      size: 16,
+                      color: Colors.white70,
                     ),
-                  ),
+                ],
+              ),
+              Text(
+                line,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: lifeStyle(
+                  13,
+                  lethal
+                      ? const Color(0xFFFFB4BC)
+                      : warn
+                      ? const Color(0xFFFFC46B)
+                      : Colors.white,
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        );
+      },
+    );
+    final middle = GestureDetector(
+      onTap: onChoose ?? () => _openMemory(context),
+      onLongPress: () => _openMemory(context),
+      child: expand
+          ? labelBlock
+          : ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 72, maxWidth: 120),
+              child: labelBlock,
+            ),
+    );
+    // +/- largeur fixe ; le libelle prend le reste.
+    double stepWidth(double maxWidth, double fallback) {
+      if (!expand) return fallback;
+      if (!maxWidth.isFinite || maxWidth <= 0) return 36;
+      // 4 boutons + au moins ~48 px pour le libellé Cdt.
+      final room = ((maxWidth - 48) / 4).clamp(24.0, 48.0);
+      return room.toDouble();
+    }
+
+    Widget row(double usedStep) {
+      double w(double fallback) => expand ? usedStep : fallback;
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: lethal ? const Color(0xFF3A1822) : panelInk,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: lethal ? dangerCrit : color, width: 1.4),
         ),
-      ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: SizedBox(
+            width: expand ? double.infinity : null,
+            height: 44,
+            child: Row(
+              mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                RepeatTap(
+                  onTick: () => onDelta(1),
+                  child: SizedBox(
+                    key: defender == null
+                        ? null
+                        : ValueKey('chip-minus-${defender!.id}-${commander.id}'),
+                    width: w(36),
+                    height: 44,
+                    child: const ColoredBox(
+                      color: Color(0xFF6A2A38),
+                      child: Center(
+                        child: Text(
+                          '−',
+                          style: TextStyle(
+                            fontSize: 22,
+                            height: 1,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFFFE4E8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                RepeatTap(
+                  onTick: () => onDelta(5),
+                  child: SizedBox(
+                    width: w(34),
+                    height: 44,
+                    child: const ColoredBox(
+                      color: Color(0xFF421824),
+                      child: Center(
+                        child: Text(
+                          '−5',
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFFFE4E8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                expand ? Expanded(child: middle) : middle,
+                RepeatTap(
+                  onTick: () => onDelta(-5),
+                  child: SizedBox(
+                    width: w(34),
+                    height: 44,
+                    child: const ColoredBox(
+                      color: _gainJump,
+                      child: Center(
+                        child: Text(
+                          '+5',
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFE8FFF2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                RepeatTap(
+                  onTick: () => onDelta(-1),
+                  child: SizedBox(
+                    width: w(36),
+                    height: 44,
+                    child: const ColoredBox(
+                      color: _gainStep,
+                      child: Center(
+                        child: Text(
+                          '+',
+                          style: TextStyle(
+                            fontSize: 22,
+                            height: 1,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFFE8FFF2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (!expand) return row(0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return row(stepWidth(constraints.maxWidth, 36));
+      },
     );
   }
 }
@@ -3247,7 +3283,6 @@ class _BandSeat extends StatelessWidget {
   final bool showTips;
   final Widget? endTurn;
 
-  @override
   Widget _body({required bool showStrip, required ScorePane pane}) {
     final own = pane != ScorePane.foes;
     final foes = pane != ScorePane.own;
@@ -3324,17 +3359,21 @@ class _BandSeat extends StatelessWidget {
         final height = constraints.maxHeight;
         final showStrip = controller.game.trackCommanderDamage;
         final pane = SeatPanes.paneOf(context, player.id);
+        // Mes pertes : le pad et les commandants remplissent le rectangle.
+        // Sur téléphone en 4 quarts, un FittedBox centrifié laissait un
+        // bloc rikiki au milieu de chaque espace.
+        if (pane == ScorePane.own) {
+          return _body(showStrip: showStrip, pane: pane);
+        }
         final options = seatOptionsExtent(
           controller.game,
           player,
           full: pane != ScorePane.foes,
           names: OptionCaption.of(context),
         );
-        // Taille où Mes PV, les cibles, les ±5 et les commandants tiennent.
+        // Anciens modes (Les deux / Adversaires) : zoom si trop étroit.
         const designW = 300.0;
-        final designH = (pane == ScorePane.both ? 380.0 : 210.0) +
-            (pane == ScorePane.own ? 48.0 : 0.0) +
-            options;
+        final designH = (pane == ScorePane.both ? 380.0 : 210.0) + options;
         final tight = !width.isFinite ||
             !height.isFinite ||
             width < designW ||
