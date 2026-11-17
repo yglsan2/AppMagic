@@ -9,6 +9,10 @@ import 'package:mtg_table/ui/sheets/profiles_sheet.dart';
 import 'package:mtg_table/ui/sheets/transfer_sheet.dart';
 import 'package:mtg_table/ui/widgets/handicap_picker.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
+import 'package:mtg_table/ui/widgets/language_button.dart';
+import 'package:mtg_table/l10n/app_lang.dart';
+import 'package:mtg_table/l10n/l10n.dart';
+import 'package:mtg_table/l10n/format_l10n.dart';
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({
@@ -27,6 +31,7 @@ class SetupScreen extends StatefulWidget {
     this.nightLabel,
     this.profiles = const [],
     this.onSaveProfile,
+    this.onLang,
   });
 
   final AppSettings settings;
@@ -43,6 +48,7 @@ class SetupScreen extends StatefulWidget {
   final Future<void> Function()? onJoinTable;
   final List<PlayerProfile> profiles;
   final Future<void> Function(PlayerProfile profile)? onSaveProfile;
+  final ValueChanged<AppLang>? onLang;
 
   @override
   State<SetupScreen> createState() => _SetupScreenState();
@@ -336,15 +342,26 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              Text(
-                'LifeStack',
-                style: TextStyle(
-                  fontSize: titleSize,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.8,
-                  height: 1.05,
-                  color: const Color(0xFFF4F7FB),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'LifeStack',
+                      style: TextStyle(
+                        fontSize: titleSize,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.8,
+                        height: 1.05,
+                        color: const Color(0xFFF4F7FB),
+                      ),
+                    ),
+                  ),
+                  LanguageButton(
+                    lang: widget.settings.lang,
+                    onChanged: (lang) => widget.onLang?.call(lang),
+                    compact: true,
+                  ),
+                ],
               ),
               const SizedBox(height: 18),
               if (widget.resumeLabel != null) ...[
@@ -403,20 +420,20 @@ class _SetupScreenState extends State<SetupScreen> {
                               }
                             },
                             icon: const Icon(Icons.qr_code_2),
-                            label: const Text('Importer'),
+                            label: Text(context.t('setup_import')),
                           ),
                           OutlinedButton.icon(
                             onPressed: widget.onOpenStats,
                             icon: const Icon(Icons.emoji_events_outlined),
-                            label: const Text('Historique'),
+                            label: Text(context.t('setup_history')),
                           ),
                           TextButton(
                             onPressed: widget.onOpenSearch,
-                            child: const Text('Cartes'),
+                            child: Text(context.t('setup_cards')),
                           ),
                           TextButton(
                             onPressed: widget.onOpenPrivacy,
-                            child: const Text('Vie privée'),
+                            child: Text(context.t('setup_privacy')),
                           ),
                         ],
                       ),
@@ -445,10 +462,10 @@ class _SetupScreenState extends State<SetupScreen> {
                   for (final info in formatCatalog)
                     HelpTip(
                       enabled: widget.settings.beginnerTips,
-                      title: info.label,
-                      message: info.help,
+                      title: context.t(formatL10nLabel(info.format)),
+                      message: context.t(formatL10nHelp(info.format)),
                       child: ChoiceChip(
-                        label: Text(info.label),
+                        label: Text(context.t(formatL10nLabel(info.format))),
                         selected: _format == info.format,
                         onSelected: (_) => _applyFormat(info),
                       ),
@@ -458,11 +475,11 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 8),
               HelpTip(
                 enabled: widget.settings.beginnerTips,
-                title: formatInfo(_format).label,
-                message: formatInfo(_format).help,
+                title: context.t(formatL10nLabel(_format)),
+                message: context.t(formatL10nHelp(_format)),
                 showIcon: true,
                 child: Text(
-                  formatInfo(_format).detail,
+                  context.t(formatL10nDetail(_format)),
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.55)),
                 ),
               ),
@@ -557,8 +574,8 @@ class _SetupScreenState extends State<SetupScreen> {
                       child: TextField(
                         controller: _field(player.id, player.name),
                         textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Nom',
+                        decoration: InputDecoration(
+                          labelText: context.t('setup_name_label'),
                           isDense: true,
                         ),
                       ),
@@ -762,7 +779,7 @@ class _SetupScreenState extends State<SetupScreen> {
                                 );
                               }),
                               icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Partenaire / 2e commandant'),
+                              label: Text(context.t('setup_partner_commander')),
                             ),
                           ),
                       ],
@@ -831,12 +848,12 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
               TextButton(
                 onPressed: () => setState(() => _more = !_more),
-                child: Text(_more ? 'Moins d’options' : 'Plus d’options'),
+                child: Text(_more ? context.t('setup_fewer_options') : context.t('setup_more_options')),
               ),
               if (_more) ...[
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Dégâts de commandant'),
+                  title: Text(context.t('setup_commander_damage')),
                   value: _damage,
                   onChanged: (value) => setState(() {
                     _damage = value;
@@ -845,7 +862,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Taxe de commandant'),
+                  title: Text(context.t('setup_commander_tax')),
                   value: _tax,
                   onChanged: (value) => setState(() {
                     _tax = value;
@@ -881,7 +898,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 Row(
                   children: [
-                    const Expanded(child: Text('Points de vie de départ')),
+                    Expanded(child: Text(context.t('setup_starting_life'))),
                     IconButton(
                       onPressed: _life > 1
                           ? () => setState(() => _life--)
@@ -919,7 +936,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 OutlinedButton.icon(
                   onPressed: widget.onJoinTable,
                   icon: const Icon(Icons.wifi_tethering),
-                  label: const Text('Rejoindre une table LifeStack'),
+                  label: Text(context.t('setup_join_table')),
                 ),
               ],
               const SizedBox(height: 8),

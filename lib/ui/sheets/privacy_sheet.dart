@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/data/app_log.dart';
 
 /// Transparence données / RGPD + actions d’effacement (app locale).
@@ -118,11 +119,11 @@ class _PrivacySheet extends StatelessWidget {
               await onClearCacheOnly!();
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Cache cartes effacé.')),
+                SnackBar(content: Text(context.t('privacy_cache_cleared'))),
               );
             },
             icon: const Icon(Icons.cached_outlined),
-            label: const Text('Effacer le cache Scryfall'),
+            label: Text(context.t('privacy_clear_cache')),
           ),
         const SizedBox(height: 8),
         FilledButton.tonalIcon(
@@ -130,7 +131,7 @@ class _PrivacySheet extends StatelessWidget {
             final ok = await showDialog<bool>(
               context: context,
               builder: (context) => AlertDialog(
-                title: const Text('Tout effacer ?'),
+                title: Text(context.t('privacy_wipe_confirm_title')),
                 content: const Text(
                   'Supprime parties, profils, soirée, réglages et caches '
                   'sur cet appareil. Irréversible.',
@@ -138,11 +139,11 @@ class _PrivacySheet extends StatelessWidget {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Annuler'),
+                    child: Text(context.t('common_cancel')),
                   ),
                   FilledButton(
                     onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Effacer'),
+                    child: Text(context.t('privacy_wipe')),
                   ),
                 ],
               ),
@@ -153,22 +154,22 @@ class _PrivacySheet extends StatelessWidget {
               if (!context.mounted) return;
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Données locales effacées.')),
+                SnackBar(content: Text(context.t('privacy_wiped'))),
               );
             } on Object catch (error, stack) {
               AppLog.error('privacy wipe', error, stack);
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Effacement impossible.')),
+                SnackBar(content: Text(context.t('privacy_wipe_failed'))),
               );
             }
           },
           icon: const Icon(Icons.delete_forever_outlined),
-          label: const Text('Effacer toutes les données locales'),
+          label: Text(context.t('privacy_wipe_all')),
         ),
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Fermer'),
+          child: Text(context.t('common_close')),
         ),
       ],
     );

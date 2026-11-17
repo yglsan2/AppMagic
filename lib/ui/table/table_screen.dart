@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mtg_table/domain/coach.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/domain/seating.dart';
@@ -1239,7 +1240,7 @@ class _Bar extends StatelessWidget {
               _BarIcon(
             slot: slot,
                 icon: Icons.arrow_back,
-                tooltip: 'Salon',
+                tooltip: context.t('bar_salon'),
                 help: beginnerTips ? tipSalon : null,
                 onPressed: onLeave,
               ),
@@ -1294,7 +1295,7 @@ class _Bar extends StatelessWidget {
           _BarIcon(
             slot: slot,
             icon: Icons.undo,
-            tooltip: 'Annuler',
+            tooltip: context.t('bar_undo'),
             help: beginnerTips ? tipUndo : null,
             onPressed: canUndo ? onUndo : null,
             emphasize: true,
@@ -1302,26 +1303,26 @@ class _Bar extends StatelessWidget {
           _BarIcon(
             slot: slot,
             icon: Icons.redo,
-            tooltip: 'Rétablir',
+            tooltip: context.t('bar_redo'),
             help: beginnerTips ? tipRedo : null,
             onPressed: canRedo ? onRedo : null,
           ),
           _BarIcon(
             slot: slot,
             icon: Icons.history,
-            tooltip: 'Historique',
+            tooltip: context.t('bar_history'),
             help: beginnerTips ? tipHistory : null,
             onPressed: onHistory,
           ),
           _BarIcon(
             slot: slot,
             icon: Icons.casino,
-            tooltip: 'Dés',
+            tooltip: context.t('bar_dice'),
             help: beginnerTips ? tipDice : null,
             onPressed: onDice,
           ),
           PopupMenuButton<CastTone>(
-            tooltip: 'Animations',
+            tooltip: context.t('bar_animations'),
             padding: EdgeInsets.zero,
             onSelected: onCast,
             itemBuilder: (context) {
@@ -1356,7 +1357,7 @@ class _Bar extends StatelessWidget {
               title: tipLayout.title,
               message: tipLayout.message,
               child: PopupMenuButton<Object>(
-              tooltip: 'Disposition de l’écran',
+              tooltip: context.t('bar_layout'),
               padding: EdgeInsets.zero,
               onSelected: (value) {
                 if (value is _BoardLayout) {
@@ -1376,9 +1377,9 @@ class _Bar extends StatelessWidget {
                     child: Text(optionNames ? 'Logos seuls' : 'Logos et noms'),
                   ),
                 if (onTableMode != null && phoneMode)
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: _DisplayExtra.table,
-                    child: Text('La table entière'),
+                    child: Text(context.t('bar_whole_table')),
                   ),
                 for (final layout in layouts)
                   PopupMenuItem(
@@ -1410,7 +1411,7 @@ class _Bar extends StatelessWidget {
             _BarIcon(
               slot: slot,
               icon: Icons.handshake,
-              tooltip: 'Relier les téléphones',
+              tooltip: context.t('bar_link_phones'),
               help: beginnerTips ? tipShare : null,
               onPressed: onPhoneMode,
               emphasize: phoneMode,
@@ -1421,7 +1422,7 @@ class _Bar extends StatelessWidget {
             title: tipMenu.title,
             message: tipMenu.message,
             child: PopupMenuButton<_Menu>(
-            tooltip: 'Menu',
+            tooltip: context.t('bar_menu'),
             padding: EdgeInsets.zero,
             onSelected: onMenu,
             itemBuilder: (context) => [
@@ -1454,18 +1455,18 @@ class _Bar extends StatelessWidget {
                 value: _Menu.history,
                 child: Text('Historique & journal'),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.transfer,
-                child: Text('Transférer (QR)'),
+                child: Text(context.t('menu_transfer_qr')),
               ),
               if (!controller.game.tournament)
                 const PopupMenuItem(
                   value: _Menu.search,
                   child: Text('Recherche de carte'),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.settings,
-                child: Text('Réglages'),
+                child: Text(context.t('menu_settings')),
               ),
               for (final layout in layouts)
                 PopupMenuItem(
@@ -1486,28 +1487,28 @@ class _Bar extends StatelessWidget {
                 value: _Menu.rotate,
                 child: Text('Tourner les places'),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.shuffle,
-                child: Text('Mélanger les places'),
+                child: Text(context.t('menu_shuffle_seats')),
               ),
               if (showTreachery)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: _Menu.treacheryDeal,
-                  child: Text('Distribuer rôles Traîtrise'),
+                  child: Text(context.t('menu_deal_treachery')),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.recap,
-                child: Text('Récap partageable'),
+                child: Text(context.t('menu_share_recap')),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.rematch,
-                child: Text('Revanche'),
+                child: Text(context.t('banner_rematch')),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.reset,
-                child: Text('Remise à zéro'),
+                child: Text(context.t('menu_reset')),
               ),
-              const PopupMenuItem(value: _Menu.about, child: Text('À propos')),
+              PopupMenuItem(value: _Menu.about, child: Text(context.t('menu_about'))),
             ],
             child: SizedBox(
               width: slot,
@@ -1928,9 +1929,9 @@ class _VictoryBannerState extends State<_VictoryBanner>
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: widget.onRecap,
-                  child: const FittedBox(
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('Récap'),
+                    child: Text(context.t('banner_recap')),
                   ),
                 ),
               ),
@@ -1943,9 +1944,9 @@ class _VictoryBannerState extends State<_VictoryBanner>
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: widget.onRematch,
-                  child: const FittedBox(
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('Revanche'),
+                    child: Text(context.t('banner_rematch')),
                   ),
                 ),
               ),
@@ -1958,9 +1959,9 @@ class _VictoryBannerState extends State<_VictoryBanner>
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   onPressed: widget.onZero,
-                  child: const FittedBox(
+                  child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('À zéro'),
+                    child: Text(context.t('banner_zero')),
                   ),
                 ),
               ),
@@ -2456,7 +2457,7 @@ class _BountyPanel extends StatelessWidget {
                 final active = game.players[game.activeIndex];
                 controller.claimBounty(active.id);
               },
-              child: const Text('Réclamer'),
+              child: Text(context.t('claim')),
             ),
           ],
         ),

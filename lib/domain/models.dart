@@ -1,4 +1,5 @@
 import 'package:mtg_table/domain/handicap.dart';
+import 'package:mtg_table/l10n/app_lang.dart';
 import 'package:mtg_table/domain/planar_decks.dart';
 
 enum MatchFormat {
@@ -1516,6 +1517,7 @@ class AppSettings {
     this.sounds = true,
     this.effectSounds = true,
     this.touchSounds = true,
+    this.lang = AppLang.fr,
   });
 
   static const defaults = AppSettings(
@@ -1551,6 +1553,7 @@ class AppSettings {
     sounds: true,
     effectSounds: true,
     touchSounds: true,
+    lang: AppLang.fr,
   );
 
   final bool haptic;
@@ -1614,6 +1617,7 @@ class AppSettings {
 
   /// Clics des touches et frottement des glissements.
   final bool touchSounds;
+  final AppLang lang;
   final String epitaphPoison;
   final String epitaphCommander;
   final String epitaphLeave;
@@ -1686,6 +1690,7 @@ class AppSettings {
     bool? sounds,
     bool? effectSounds,
     bool? touchSounds,
+    AppLang? lang,
   }) {
     return AppSettings(
       haptic: haptic ?? this.haptic,
@@ -1723,6 +1728,7 @@ class AppSettings {
       sounds: sounds ?? this.sounds,
       effectSounds: effectSounds ?? this.effectSounds,
       touchSounds: touchSounds ?? this.touchSounds,
+      lang: lang ?? this.lang,
     );
   }
 
@@ -1760,6 +1766,7 @@ class AppSettings {
     'sounds': sounds,
     'effectSounds': effectSounds,
     'touchSounds': touchSounds,
+    'lang': lang.code,
     'namedPanes': {
       for (final entry in namedPanes.entries) entry.key: entry.value.name,
     },
@@ -1820,6 +1827,7 @@ class AppSettings {
       sounds: json['sounds'] as bool? ?? true,
       effectSounds: json['effectSounds'] as bool? ?? (json['sounds'] as bool? ?? true),
       touchSounds: json['touchSounds'] as bool? ?? (json['sounds'] as bool? ?? true),
+      lang: AppLang.fromCode(json['lang'] as String?),
     );
   }
 }

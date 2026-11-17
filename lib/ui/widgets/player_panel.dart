@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/data/safe_image.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/handicap.dart';
@@ -34,7 +35,7 @@ Future<void> endPlayerTurn(
     final drew = await showSeatDialog<bool>(
       context,
       builder: (context) => AlertDialog(
-        title: const Text('Étape de fin'),
+        title: Text(context.t('monarch_end_step_title')),
         content: Text(
           '${active.name}, vous êtes monarque. Au début de cette étape, '
           'vous piochiez une carte. C’est fait ?',
@@ -46,7 +47,7 @@ Future<void> endPlayerTurn(
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Oui, carte piochée'),
+            child: Text(context.t('monarch_drew_card')),
           ),
         ],
       ),
@@ -2480,7 +2481,7 @@ class _OwnLifeRow extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'Mes PV',
+                      context.t('my_life'),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -2977,9 +2978,9 @@ class _ReceivedPickState extends State<_ReceivedPick> {
       taken: waiting ? null : taken,
       remaining: waiting ? null : remaining,
       expand: true,
-      label: 'Cdt',
+      label: context.t('cmd_abbrev'),
       note: waiting
-          ? 'Choisir'
+          ? context.t('cmd_pick')
           : several
           ? '${commanderChipLabel(hit.owner, hit.commander)} · reste $remaining'
           : null,
@@ -3479,7 +3480,7 @@ class _BandHeader extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Mes PV',
+                        context.t('my_life'),
                         style: TextStyle(
                           fontSize: 9,
                           height: 1,
@@ -4543,9 +4544,9 @@ class _DefeatOverlayState extends State<_DefeatOverlay>
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
           onPressed: _revive,
-          child: const FittedBox(
+          child: FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text('Revenir à la table'),
+            child: Text(context.t('return_to_table')),
           ),
         ),
       ),
@@ -4587,7 +4588,7 @@ class _RevengeAsk extends StatelessWidget {
       onPressed: () {
         onYes();
       },
-      child: const Text('Oui'),
+      child: Text(context.t('common_yes')),
     );
     final no = TextButton(
       style: TextButton.styleFrom(
@@ -4596,7 +4597,7 @@ class _RevengeAsk extends StatelessWidget {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       onPressed: onNo,
-      child: const Text('Non'),
+      child: Text(context.t('common_no')),
     );
     return DecoratedBox(
       decoration: BoxDecoration(

@@ -5,6 +5,8 @@ import 'package:mtg_table/app_state.dart';
 import 'package:mtg_table/data/app_log.dart';
 import 'package:mtg_table/data/repository.dart';
 import 'package:mtg_table/domain/models.dart';
+import 'package:mtg_table/l10n/app_lang.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/night/night_hub_screen.dart';
 import 'package:mtg_table/ui/night/night_start_sheet.dart';
@@ -76,8 +78,8 @@ class _TableMtgAppState extends State<TableMtgApp> {
           builder: (context, _) {
             final n = _app.night;
             if (n == null) {
-              return const Scaffold(
-                body: Center(child: Text('Soirée fermée')),
+              return Scaffold(
+                body: Center(child: Text(context.t('main_night_closed'))),
               );
             }
             return NightHubScreen(
@@ -107,12 +109,20 @@ class _TableMtgAppState extends State<TableMtgApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return ListenableBuilder(
+      listenable: _app,
+      builder: (context, _) {
+        final lang = _app.settings.lang;
+        return L10nProvider(
+          lang: lang,
+          child: MaterialApp(
       title: 'LifeStack',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      locale: const Locale('fr'),
-      supportedLocales: const [Locale('fr'), Locale('en')],
+      locale: lang.locale,
+      supportedLocales: [
+        for (final item in AppLang.supported) item.locale,
+      ],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -130,9 +140,8 @@ class _TableMtgAppState extends State<TableMtgApp> {
           child: child ?? const SizedBox.shrink(),
         );
       },
-      home: ListenableBuilder(
-        listenable: _app,
-        builder: (context, _) {
+      home: Builder(
+        builder: (context) {
           if (!_app.ready) {
             return const Scaffold(
               body: Center(
@@ -151,9 +160,12 @@ class _TableMtgAppState extends State<TableMtgApp> {
               resumeLabel: _app.resumeLabel,
               nightLabel: _app.night == null
                   ? null
-                  : 'Soirée · ${_app.night!.code}',
+                  : switch (lang) { AppLang.fr => 'Soirée · ${_app.night!.code}', AppLang.en => 'Night · ${_app.night!.code}', AppLang.lv => 'Vakars · ${_app.night!.code}' },
               profiles: _app.profiles,
               onSaveProfile: _app.upsertProfile,
+              onLang: (lang) => _app.updateSettings(
+                _app.settings.copyWith(lang: lang),
+              ),
               onStart: _app.start,
               onResume: _app.resume,
               onOpenSearch: () {
@@ -191,8 +203,8 @@ class _TableMtgAppState extends State<TableMtgApp> {
                 final ok = await _app.openSession(session, drawFirst: false);
                 if (!ok && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Cette table n’a pas pu s’ouvrir.'),
+                    SnackBar(
+                      content: Text(context.t('main_table_open_failed')),
                     ),
                   );
                 }
@@ -231,6 +243,9 @@ class _TableMtgAppState extends State<TableMtgApp> {
           );
         },
       ),
+          ),
+        );
+      },
     );
   }
 }

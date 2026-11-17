@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/ui/widgets/finale_fx.dart';
 import 'package:mtg_table/ui/widgets/help_tip.dart';
+import 'package:mtg_table/ui/widgets/language_button.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 
 Future<void> showSettingsSheet(
   BuildContext context, {
@@ -118,14 +120,27 @@ class _SettingsSheetState extends State<SettingsSheet> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
-        const Text(
-          'Réglages',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        Text(
+          context.t('settings_title'),
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 8),
-        const ListTile(
+        ListTile(
           contentPadding: EdgeInsets.zero,
-          title: Text('Dégâts de commandant et vie'),
+          title: Text(context.t('language_title')),
+          trailing: LanguageButton(
+            lang: _settings.lang,
+            onChanged: (lang) {
+              final next = _settings.copyWith(lang: lang);
+              setState(() => _settings = next);
+              widget.onChanged(next);
+            },
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(context.t('settings_cmd_life_title')),
           subtitle: Text(
             'Un point de dégâts de combat d’un commandant retire aussi '
             '1 point de vie. Si vous corrigez, seuls les points vraiment '
@@ -134,7 +149,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Sans fin de tour'),
+          title: Text(context.t('settings_no_end_turn')),
           subtitle: const Text(
             'Le bouton disparaît. Un retrait de points met en évidence '
             'le compte de celui qui les perd.',
@@ -149,7 +164,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'Fin de tour remet à zéro le mana du joueur qui vient de jouer.',
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Vider le mana en fin de tour'),
+            title: Text(context.t('settings_reset_mana')),
             value: _settings.resetManaOnTurn,
             onChanged: (value) =>
                 _update(_settings.copyWith(resetManaOnTurn: value)),
@@ -161,9 +176,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
               'Activé, il revient à zéro quand ce joueur termine son tour.',
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text(
-              'Remettre la tempête à zéro en fin de tour',
-            ),
+            title: Text(context.t('settings_reset_storm')),
             value: _settings.resetStormOnTurn,
             onChanged: (value) =>
                 _update(_settings.copyWith(resetStormOnTurn: value)),
@@ -172,7 +185,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Tous les sons'),
+          title: Text(context.t('settings_all_sounds')),
           value: _settings.sounds,
           onChanged: (value) => _update(
             _settings.copyWith(
@@ -184,7 +197,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Bruitages'),
+          title: Text(context.t('settings_effect_sounds')),
           subtitle: const Text('Coups, sorts, défaite et victoire'),
           value: _settings.sounds && _settings.effectSounds,
           onChanged: (value) => _update(
@@ -196,7 +209,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Touches et glissements'),
+          title: Text(context.t('settings_touch_sounds')),
           value: _settings.sounds && _settings.touchSounds,
           onChanged: (value) => _update(
             _settings.copyWith(
@@ -265,13 +278,13 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Vibrations'),
+          title: Text(context.t('settings_haptic')),
           value: _settings.haptic,
           onChanged: (value) => _update(_settings.copyWith(haptic: value)),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Bulles d’aide'),
+          title: Text(context.t('settings_beginner_tips')),
           subtitle: const Text(
             'Éteintes, la table reste nette. Allumées, un maintien ou le i '
             'explique chaque option : vies, commandants, poison, monarque, '
@@ -389,7 +402,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Mode tournoi'),
+          title: Text(context.t('settings_tournament')),
           subtitle: const Text(
             'Le compteur et l’horloge, si elle est allumée, restent visibles. '
             'Le journal, la recherche de carte et les conseils de deck sont fermés '
@@ -400,7 +413,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Chronomètre'),
+          title: Text(context.t('settings_timer')),
           subtitle: Text(
             _settings.timersEnabled
                 ? 'Activé. Le temps du tour et de la partie s’affiche.'
