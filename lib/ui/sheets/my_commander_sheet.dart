@@ -138,6 +138,7 @@ class _MyCommanderDialogState extends State<_MyCommanderDialog> {
 /// Couronne dorée, à la place de l’ancien œil, sur chaque rectangle.
 class CommanderEmblem extends StatelessWidget {
   const CommanderEmblem({
+    super.key,
     this.size = 22,
     this.color = const Color(0xFFE7C98A),
   });
@@ -194,6 +195,7 @@ class _CommanderEmblemPainter extends CustomPainter {
 
 class MyCommanderButton extends StatelessWidget {
   const MyCommanderButton({
+    super.key,
     required this.controller,
     required this.player,
     required this.showTips,

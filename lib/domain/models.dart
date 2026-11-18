@@ -1551,7 +1551,7 @@ class AppSettings {
     scorePane: ScorePane.own,
     namedPanes: {},
     finaleStyle: FinaleStyle.mythic,
-    saltLines: const [],
+    saltLines: [],
     epitaphLife: '',
     epitaphPoison: '',
     epitaphCommander: '',

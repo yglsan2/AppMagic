@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 /// [turnsRadians] sert à la table ronde, quand le quart de tour ne suffit pas.
 class SeatReading extends InheritedWidget {
   const SeatReading({
+    super.key,
     required this.quarterTurns,
     this.turnsRadians,
     required super.child,
@@ -130,7 +131,11 @@ Future<T?> showSeatDialog<T>(
 
 /// Indication courte. Droite sur un espace droit, tournée avec les autres.
 class SeatNote extends StatelessWidget {
-  const SeatNote({required this.message, required this.child});
+  const SeatNote({
+    super.key,
+    required this.message,
+    required this.child,
+  });
 
   final String message;
   final Widget child;

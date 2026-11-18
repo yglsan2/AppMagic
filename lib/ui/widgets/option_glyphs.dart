@@ -75,7 +75,11 @@ Color markColor(OptionMarkKind kind) => switch (kind) {
 
 /// Noms sous les logos. Absent : symboles seuls, comme au centre de la table.
 class OptionCaption extends InheritedWidget {
-  const OptionCaption({required this.names, required super.child});
+  const OptionCaption({
+    super.key,
+    required this.names,
+    required super.child,
+  });
 
   final bool names;
 

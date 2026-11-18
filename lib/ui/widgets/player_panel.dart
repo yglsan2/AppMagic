@@ -59,7 +59,7 @@ Future<void> endPlayerTurn(
 
 /// Le gros chiffre reste sous le soleil et la lune, au milieu d’une liste droite.
 class LifeBelowCenter extends InheritedWidget {
-  const LifeBelowCenter({required super.child});
+  const LifeBelowCenter({super.key, required super.child});
 
   static bool of(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<LifeBelowCenter>() !=
@@ -73,6 +73,7 @@ class LifeBelowCenter extends InheritedWidget {
 /// Affichage choisi pour chaque siège de la partie en cours.
 class SeatPanes extends InheritedWidget {
   const SeatPanes({
+    super.key,
     required this.byId,
     required this.onChoose,
     required this.onSave,
@@ -832,7 +833,11 @@ IconData _castMotifIcon(CastTone tone) => switch (tone) {
 };
 
 class CinemaCameraIcon extends StatelessWidget {
-  const CinemaCameraIcon({required this.color, this.size = 22});
+  const CinemaCameraIcon({
+    super.key,
+    required this.color,
+    this.size = 22,
+  });
 
   final Color color;
   final double size;
@@ -2584,7 +2589,7 @@ class _OwnLosses extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           SizedBox(height: 112, child: life),
-          if (strip != null) strip,
+          ?strip,
         ],
       );
     }
@@ -2603,7 +2608,7 @@ class _OwnLosses extends StatelessWidget {
               child: Column(
                 children: [
                   Expanded(child: life),
-                  if (stripWidget != null) stripWidget,
+                  ?stripWidget,
                 ],
               ),
             ),
@@ -3162,16 +3167,8 @@ class _CmdTick extends StatelessWidget {
               child: labelBlock,
             ),
     );
-    // +/- largeur fixe ; le libelle prend le reste.
-    double stepWidth(double maxWidth, double fallback) {
-      if (!expand) return fallback;
-      if (!maxWidth.isFinite || maxWidth <= 0) return 36;
-      // 4 boutons + au moins ~48 px pour le libellé Cdt.
-      final room = ((maxWidth - 48) / 4).clamp(24.0, 48.0);
-      return room.toDouble();
-    }
 
-    Widget row(double usedStep) {
+    Widget row(double usedStep, {bool showJumps = true}) {
       double w(double fallback) => expand ? usedStep : fallback;
       return DecoratedBox(
         decoration: BoxDecoration(
@@ -3211,49 +3208,51 @@ class _CmdTick extends StatelessWidget {
                     ),
                   ),
                 ),
-                RepeatTap(
-                  onTick: () => onDelta(5),
-                  child: SizedBox(
-                    width: w(34),
-                    height: 44,
-                    child: const ColoredBox(
-                      color: Color(0xFF421824),
-                      child: Center(
-                        child: Text(
-                          '−5',
-                          style: TextStyle(
-                            fontSize: 13,
-                            height: 1,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFFFFE4E8),
+                if (showJumps)
+                  RepeatTap(
+                    onTick: () => onDelta(5),
+                    child: SizedBox(
+                      width: w(34),
+                      height: 44,
+                      child: const ColoredBox(
+                        color: Color(0xFF421824),
+                        child: Center(
+                          child: Text(
+                            '−5',
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFFFE4E8),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
                 expand ? Expanded(child: middle) : middle,
-                RepeatTap(
-                  onTick: () => onDelta(-5),
-                  child: SizedBox(
-                    width: w(34),
-                    height: 44,
-                    child: const ColoredBox(
-                      color: _gainJump,
-                      child: Center(
-                        child: Text(
-                          '+5',
-                          style: TextStyle(
-                            fontSize: 13,
-                            height: 1,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFFE8FFF2),
+                if (showJumps)
+                  RepeatTap(
+                    onTick: () => onDelta(-5),
+                    child: SizedBox(
+                      width: w(34),
+                      height: 44,
+                      child: const ColoredBox(
+                        color: _gainJump,
+                        child: Center(
+                          child: Text(
+                            '+5',
+                            style: TextStyle(
+                              fontSize: 13,
+                              height: 1,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFE8FFF2),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
                 RepeatTap(
                   onTick: () => onDelta(-1),
                   child: SizedBox(
@@ -3285,7 +3284,13 @@ class _CmdTick extends StatelessWidget {
     if (!expand) return row(0);
     return LayoutBuilder(
       builder: (context, constraints) {
-        return row(stepWidth(constraints.maxWidth, 36));
+        final maxW = constraints.maxWidth;
+        // Si l'espace est très restreint (< 130px), masquer les boutons ±5
+        // pour éviter tout overflow et garder − / libellé / + confortables.
+        final showJumps = maxW >= 130;
+        final buttonsCount = showJumps ? 4 : 2;
+        final step = ((maxW - 44) / buttonsCount).clamp(20.0, 44.0).toDouble();
+        return row(step, showJumps: showJumps);
       },
     );
   }

@@ -30,6 +30,7 @@ import 'package:mtg_table/ui/widgets/option_glyphs.dart';
 import 'package:mtg_table/ui/widgets/finale_fx.dart';
 import 'package:mtg_table/ui/widgets/player_panel.dart';
 import 'package:mtg_table/ui/widgets/table_audio.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class TableScreen extends StatefulWidget {
   const TableScreen({
@@ -159,6 +160,7 @@ class _TableScreenState extends State<TableScreen> {
   @override
   void initState() {
     super.initState();
+    unawaited(WakelockPlus.enable().catchError((_) {}));
     widget.controller.addListener(_onGame);
     widget.link?.addListener(_onLink);
     widget.link?.onSession = _onRemoteSession;
@@ -456,6 +458,7 @@ class _TableScreenState extends State<TableScreen> {
     if (widget.link?.onSession == _onRemoteSession) {
       widget.link?.onSession = null;
     }
+    unawaited(WakelockPlus.disable().catchError((_) {}));
     super.dispose();
   }
 
@@ -598,7 +601,7 @@ class _TableScreenState extends State<TableScreen> {
         if (!didPop) _leave();
       },
       child: FinaleScope(
-        style: compactSolo ? FinaleStyle.still : widget.settings.finaleStyle,
+        style: widget.settings.finaleStyle,
         saltLines: widget.settings.saltLines,
         epitaphLife: widget.settings.epitaphLife,
         epitaphPoison: widget.settings.epitaphPoison,

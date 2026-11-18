@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -129,7 +128,7 @@ void main() {
         expect(
           sky.mode,
           why.contains('night') ? BlendMode.multiply : BlendMode.srcOver,
-          reason: '$why',
+          reason: why,
         );
         final paintSize = tester.getSize(paints.first);
         final panelSize = tester.getSize(panel);
