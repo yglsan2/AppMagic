@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:mtg_table/domain/night_session.dart';
 import 'package:mtg_table/theme/app_theme.dart';
@@ -45,7 +46,7 @@ class NightStatsSheet extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: 'Fermer',
+                tooltip: context.t('close_tooltip'),
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.close),
               ),
@@ -68,7 +69,7 @@ class NightStatsSheet extends StatelessWidget {
                   'CSV copié — collez dans Excel / Sheets.',
                 ),
                 icon: const Icon(Icons.table_chart_outlined, size: 18),
-                label: const Text('Copier CSV'),
+                label: Text(context.t('copy_csv')),
               ),
               OutlinedButton.icon(
                 onPressed: () => _copy(
@@ -77,7 +78,7 @@ class NightStatsSheet extends StatelessWidget {
                   'Récap texte copié.',
                 ),
                 icon: const Icon(Icons.copy_all, size: 18),
-                label: const Text('Copier texte'),
+                label: Text(context.t('copy_text')),
               ),
             ],
           ),

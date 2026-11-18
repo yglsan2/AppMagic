@@ -4,6 +4,7 @@ import 'package:mtg_table/data/scryfall_art.dart';
 import 'package:mtg_table/domain/handicap.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/domain/player_profile.dart';
+import 'package:mtg_table/domain/table_panels.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/sheets/profiles_sheet.dart';
 import 'package:mtg_table/ui/sheets/transfer_sheet.dart';
@@ -93,6 +94,8 @@ class _SetupScreenState extends State<SetupScreen> {
   late bool _bounty;
   late bool _handicaps;
   late int _count;
+  /// 1 = compact ; 2 = deux téléphones ; 3 = trois (9–10).
+  int _phonePanels = 1;
   bool _more = false;
   final List<_DraftPlayer> _drafts = [];
 
@@ -116,6 +119,7 @@ class _SetupScreenState extends State<SetupScreen> {
       source.isEmpty ? info.defaultPlayers : source.length,
       info,
     );
+    _syncPhonePanels();
     for (final player in source) {
       _drafts.add(
         _DraftPlayer(
@@ -212,6 +216,7 @@ class _SetupScreenState extends State<SetupScreen> {
         _count = info.defaultPlayers;
       }
       _count = _normalizedCount(_count, info);
+      _syncPhonePanels();
       _ensureCommanders();
     });
     _revealPlayerSetup();
@@ -220,9 +225,21 @@ class _SetupScreenState extends State<SetupScreen> {
   void _setCount(int value) {
     setState(() {
       _count = _normalizedCount(value, formatInfo(_format));
+      _syncPhonePanels();
       _ensureCommanders();
     });
     _revealPlayerSetup();
+  }
+
+  void _syncPhonePanels() {
+    switch (phoneNeedFor(_count)) {
+      case TablePhoneNeed.one:
+        _phonePanels = 1;
+      case TablePhoneNeed.oneOrTwo:
+        if (_phonePanels < 1 || _phonePanels > 2) _phonePanels = 1;
+      case TablePhoneNeed.three:
+        _phonePanels = 3;
+    }
   }
 
   Future<void> _lookupArt(_DraftCmd commander) async {
@@ -230,7 +247,7 @@ class _SetupScreenState extends State<SetupScreen> {
     if (name.length < 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Indiquez un nom de commandant.')),
+        SnackBar(content: Text(context.t('setup_commander_name_required'))),
       );
       return;
     }
@@ -248,8 +265,8 @@ class _SetupScreenState extends State<SetupScreen> {
     });
     if (result.value == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Carte trouvée sans illustration, ou nom inconnu.'),
+        SnackBar(
+          content: Text(context.t('setup_card_found_no_art')),
         ),
       );
     }
@@ -304,6 +321,10 @@ class _SetupScreenState extends State<SetupScreen> {
           else
             <String?>[],
       ],
+      phonePanels: suggestedPhoneCount(
+        _count,
+        preferMulti: _phonePanels > 1,
+      ),
     );
     widget.onStart(game);
   }
@@ -444,7 +465,7 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 8),
               HelpTip(
                 enabled: widget.settings.beginnerTips,
-                title: 'Formats',
+                title: context.t('setup_formats'),
                 message:
                     'Maintenez un format, ou touchez le i, pour lire '
                     'l’explication. Le nom anglais reste entre parenthèses.',
@@ -484,29 +505,24 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
               ),
               if (_format == MatchFormat.duel)
-                const _FormatNote(
-                  title: 'Duel Commander · 2 joueurs',
-                  body:
-                      'Face à face, avec les règles du Duel Commander. '
-                      'Chacun commence à 20 points de vie. On compte la taxe '
-                      'de commandant, pas les 21 points de dégâts.',
+                _FormatNote(
+                  title: context.t('setup_duel_note_title'),
+                  body: context.t('setup_duel_note_body'),
                 )
               else if (_format == MatchFormat.commander && _count == 2)
-                const _FormatNote(
-                  title: 'Commander à deux',
-                  body:
-                      'Vous n’êtes que deux, mais les règles restent celles '
-                      'du Commander. Chacun commence à 40 points de vie. '
-                      'Un joueur perd aussi s’il a reçu 21 points de dégâts '
-                      'de combat du même commandant. Pour la partie à deux '
-                      'à 20 points de vie, choisissez Duel Commander.',
+                _FormatNote(
+                  title: context.t('setup_commander_2p_title'),
+                  body: context.t('setup_commander_2p_body'),
                 ),
               const SizedBox(height: 8),
               Text(
                 key: _playerSetupKey,
                 formatInfo(_format).fixedPlayerCount
-                    ? 'Joueurs (${formatInfo(_format).minPlayers})'
-                    : 'Joueurs (${formatInfo(_format).minPlayers}–${formatInfo(_format).maxPlayers})',
+                    ? context.t('setup_players_fixed', {'n': '${formatInfo(_format).minPlayers}'})
+                    : context.t('setup_players_range', {
+                        'min': '${formatInfo(_format).minPlayers}',
+                        'max': '${formatInfo(_format).maxPlayers}',
+                      }),
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 18,
@@ -545,12 +561,87 @@ class _SetupScreenState extends State<SetupScreen> {
                   );
                 },
               ),
+              if (phoneNeedFor(_count) == TablePhoneNeed.oneOrTwo) ...[
+                const SizedBox(height: 14),
+                Text(
+                  context.t('setup_table_phones_title'),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  context.t('setup_table_phones_hint_68'),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _PhoneModePick(
+                        selected: _phonePanels == 1,
+                        title: context.t('setup_table_one_phone'),
+                        subtitle: context.t('setup_table_one_phone_sub'),
+                        onTap: () => setState(() => _phonePanels = 1),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _PhoneModePick(
+                        selected: _phonePanels == 2,
+                        title: context.t('setup_table_two_phones'),
+                        subtitle: context.t('setup_table_two_phones_sub'),
+                        onTap: () => setState(() => _phonePanels = 2),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (phoneNeedFor(_count) == TablePhoneNeed.three) ...[
+                const SizedBox(height: 14),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.t('setup_table_three_phones'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          context.t('setup_table_three_phones_sub'),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               for (final player in used) ...[
                 Row(
                   children: [
                     Tooltip(
-                      message: 'Couleur du siège',
+                      message: context.t('setup_color_seat'),
                       child: InkWell(
                         onTap: () => setState(() {
                           player.color =
@@ -597,7 +688,7 @@ class _SetupScreenState extends State<SetupScreen> {
                         ),
                       ),
                     IconButton(
-                      tooltip: 'Charger un profil',
+                      tooltip: context.t('setup_load_profile_tooltip'),
                       visualDensity: VisualDensity.compact,
                       constraints: const BoxConstraints(
                         minWidth: 36,
@@ -633,7 +724,7 @@ class _SetupScreenState extends State<SetupScreen> {
                       icon: const Icon(Icons.person_search, size: 20),
                     ),
                     IconButton(
-                      tooltip: 'Sauver le profil',
+                      tooltip: context.t('setup_save_profile_tooltip'),
                       visualDensity: VisualDensity.compact,
                       constraints: const BoxConstraints(
                         minWidth: 36,
@@ -652,6 +743,8 @@ class _SetupScreenState extends State<SetupScreen> {
                               );
                               if (!ok || !context.mounted) return;
                               final messenger = ScaffoldMessenger.of(context);
+                              final savedMsg = context.t('setup_profile_saved');
+                              final failMsg = context.t('setup_profile_save_failed');
                               try {
                                 await widget.onSaveProfile!(
                                   PlayerProfile.fromDraft(
@@ -673,17 +766,13 @@ class _SetupScreenState extends State<SetupScreen> {
                                   ),
                                 );
                                 messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Profil enregistré.'),
+                                  SnackBar(
+                                    content: Text(savedMsg),
                                   ),
                                 );
                               } on Object {
                                 messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Enregistrement du profil impossible.',
-                                    ),
-                                  ),
+                                  SnackBar(content: Text(failMsg)),
                                 );
                               }
                             },
@@ -739,7 +828,7 @@ class _SetupScreenState extends State<SetupScreen> {
                                 ),
                               ),
                               IconButton(
-                                tooltip: 'Illustration Scryfall',
+                                tooltip: context.t('setup_scryfall_art_tooltip'),
                                 visualDensity: VisualDensity.compact,
                                 constraints: const BoxConstraints(
                                   minWidth: 36,
@@ -811,7 +900,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   children: [
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Handicaps de deck'),
+                      title: Text(context.t('setup_handicaps_title')),
                       subtitle: const Text(
                         'Un préconstruit peut commencer à 50 points de vie, '
                         'un deck compétitif à 30.',
@@ -871,7 +960,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Course planaire (Planechase)'),
+                  title: Text(context.t('setup_planechase')),
                   subtitle: const Text(
                     'Cartes de plan, et un dé : quatre faces blanches, une planeswalk, une chaos.',
                   ),
@@ -880,7 +969,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Archennemi (Archenemy)'),
+                  title: Text(context.t('setup_archenemy')),
                   subtitle: const Text(
                     'Un joueur contre le reste de la table, avec des stratagèmes.',
                   ),
@@ -889,7 +978,7 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Primes (Bounty · OTJ)'),
+                  title: Text(context.t('setup_bounty')),
                   subtitle: const Text(
                     'Cartes Prime de Hors-la-loi de Croisetonnerre, du niveau 1 au 12.',
                   ),
@@ -921,7 +1010,7 @@ class _SetupScreenState extends State<SetupScreen> {
               const SizedBox(height: 8),
               Semantics(
                 button: true,
-                label: 'Lancer la partie',
+                label: context.t('setup_start_game'),
                 child: FilledButton(
                   onPressed: _start,
                   child: Text(
@@ -1045,6 +1134,59 @@ class _CountPick extends StatelessWidget {
                 color: selected ? onAccent : const Color(0xFFF4F7FB),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhoneModePick extends StatelessWidget {
+  const _PhoneModePick({
+    required this.selected,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? accent.withValues(alpha: 0.22) : surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: selected ? accent : line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: selected ? accent : const Color(0xFFF4F7FB),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.25,
+                  color: Colors.white.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
           ),
         ),
       ),

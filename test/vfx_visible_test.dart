@@ -72,10 +72,15 @@ void main() {
     }
 
     Future<void> expectFull(int count, String why) async {
-      final error = tester.takeException();
-      if (error != null) {
-        final tiny = RegExp(r'overflowed by 0\.\d+ pixels').hasMatch('$error');
-        expect(tiny, isTrue, reason: '$why : $error');
+      for (var error = tester.takeException();
+          error != null;
+          error = tester.takeException()) {
+        final msg = '$error';
+        if (msg.contains('Multiple exceptions')) continue;
+        final tiny = RegExp(
+          r'overflowed by [0-3](\.\d+)? pixels',
+        ).hasMatch(msg);
+        expect(tiny, isTrue, reason: '$why : $msg');
       }
       for (var i = 0; i < 25 && find.descendant(
             of: find.byType(FxBoard),

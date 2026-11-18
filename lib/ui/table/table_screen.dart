@@ -8,6 +8,7 @@ import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/domain/seating.dart';
+import 'package:mtg_table/domain/table_panels.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/setup/first_player_draw.dart';
 import 'package:mtg_table/ui/sheets/card_journal_sheet.dart';
@@ -222,7 +223,9 @@ class _TableScreenState extends State<TableScreen> {
       return _BoardLayout.phone;
     }
     if (_layout != _BoardLayout.auto) return _layout;
-    if (players >= 5) return _BoardLayout.stack;
+    // Comme Lotus : dès 5 joueurs, places autour de l’écran (poker),
+    // pas des bandes empilées illisibles.
+    if (players >= 5) return _BoardLayout.phone;
     return _BoardLayout.phone;
   }
 
@@ -573,12 +576,19 @@ class _TableScreenState extends State<TableScreen> {
     TableAudio.master = widget.settings.sounds;
     TableAudio.effects = widget.settings.effectSounds;
     TableAudio.touches = widget.settings.touchSounds;
+    final game = widget.controller.game;
+    // 6–8 sur un seul téléphone : écran déjà saturé → aucune anim.
+    final compactSolo = useMinimalBand(
+      game.players.length,
+      phoneCount: game.phonePanels.clamp(1, 3),
+    );
     GameController.lifeSound = (cast, delta) {
-      if (widget.settings.finaleStyle == FinaleStyle.still) return;
+      if (compactSolo || widget.settings.finaleStyle == FinaleStyle.still) {
+        return;
+      }
       if (cast == CastTone.aucune) return;
       TableAudio.playWound(delta);
     };
-    final game = widget.controller.game;
     final personalPhone = widget.link != null &&
         widget.link!.linked &&
         !widget.link!.center;
@@ -588,7 +598,7 @@ class _TableScreenState extends State<TableScreen> {
         if (!didPop) _leave();
       },
       child: FinaleScope(
-        style: widget.settings.finaleStyle,
+        style: compactSolo ? FinaleStyle.still : widget.settings.finaleStyle,
         saltLines: widget.settings.saltLines,
         epitaphLife: widget.settings.epitaphLife,
         epitaphPoison: widget.settings.epitaphPoison,
@@ -749,14 +759,16 @@ class _TableScreenState extends State<TableScreen> {
                           ? null
                           : () => widget.link!.setCenter(true),
                       optionNames: widget.settings.optionNames,
-                      onCast: (cast) {
-                        widget.controller.setCastAll(cast);
-                        widget.onSettings(
-                          widget.settings.copyWith(
-                            finaleStyle: finaleForCast(cast),
-                          ),
-                        );
-                      },
+                      onCast: compactSolo
+                          ? null
+                          : (cast) {
+                              widget.controller.setCastAll(cast);
+                              widget.onSettings(
+                                widget.settings.copyWith(
+                                  finaleStyle: finaleForCast(cast),
+                                ),
+                              );
+                            },
                       onOptionNames: () => widget.onSettings(
                         widget.settings.copyWith(
                           optionNames: !widget.settings.optionNames,
@@ -818,11 +830,52 @@ class _TableScreenState extends State<TableScreen> {
                               widget.settings.viewMode == ViewMode.list ||
                               widget.settings.viewMode == ViewMode.focus;
                           final count = game.players.length;
+                          final panelsWanted = game.phonePanels.clamp(1, 3);
+                          final minimalBand = useMinimalBand(
+                            count,
+                            phoneCount: panelsWanted,
+                          ) ||
+                              count >= 5;
+                          if (panelsWanted > 1) {
+                            final link = widget.link;
+                            if (link == null || !link.linked) {
+                              return _NeedPhonesGate(
+                                needed: panelsWanted,
+                                players: count,
+                                onOpenLink: link == null
+                                    ? null
+                                    : () => showTableLinkSheet(
+                                        context,
+                                        link: link,
+                                        controller: widget.controller,
+                                      ),
+                              );
+                            }
+                            final claimed = panelIndexFromSeat(link.mySeat);
+                            if (claimed == null) {
+                              return LinkedPanelPicker(
+                                controller: widget.controller,
+                                link: link,
+                                panelCount: panelsWanted,
+                              );
+                            }
+                            return _FourSides(
+                              plan: panelPlan(
+                                players: count,
+                                panelIndex: claimed,
+                                panelCount: panelsWanted,
+                                shift: game.seatShift,
+                              ),
+                              controller: widget.controller,
+                              haptic: widget.settings.haptic,
+                              showTips: widget.settings.beginnerTips,
+                              minimal: false,
+                            );
+                          }
                           if (personalPhone) {
                             final mine = widget.link!.mySeat;
-                            final known = mine != null &&
-                                game.players.any((player) => player.id == mine);
-                            if (!known) {
+                            if (mine == null ||
+                                !game.players.any((player) => player.id == mine)) {
                               return LinkedSeatPicker(
                                 controller: widget.controller,
                                 link: widget.link!,
@@ -830,7 +883,7 @@ class _TableScreenState extends State<TableScreen> {
                             }
                             return LinkedSeatView(
                               controller: widget.controller,
-                              mine: mine!,
+                              mine: mine,
                               haptic: widget.settings.haptic,
                               showTips: widget.settings.beginnerTips,
                             );
@@ -844,13 +897,15 @@ class _TableScreenState extends State<TableScreen> {
                               controller: widget.controller,
                               haptic: widget.settings.haptic,
                               showTips: widget.settings.beginnerTips,
+                              minimal: minimalBand,
                             );
                           }
                           final choice = _layout == _BoardLayout.split && count != 4
                               ? _BoardLayout.phone
                               : _layout;
                           final forced = choice != _BoardLayout.auto;
-                          Widget stacked() => _HorizontalBands(
+                          Widget stacked({bool minimal = false}) =>
+                              _HorizontalBands(
                             plan: SeatingPlan(
                               south: [for (var i = 0; i < count; i++) i],
                               north: const [],
@@ -859,6 +914,17 @@ class _TableScreenState extends State<TableScreen> {
                             controller: widget.controller,
                             haptic: widget.settings.haptic,
                             showTips: widget.settings.beginnerTips,
+                            minimal: minimal,
+                          );
+                          Widget circle({required bool minimal}) => _FourSides(
+                            plan: pokerPlan(count).oriented(
+                              game.seatShift,
+                              count,
+                            ),
+                            controller: widget.controller,
+                            haptic: widget.settings.haptic,
+                            showTips: widget.settings.beginnerTips,
+                            minimal: minimal,
                           );
                           if (choice == _BoardLayout.line &&
                               count == 3 &&
@@ -902,26 +968,30 @@ class _TableScreenState extends State<TableScreen> {
                               showTips: widget.settings.beginnerTips,
                             );
                           }
-                          final autoStack =
-                              choice == _BoardLayout.auto && count >= 5;
-                          if ((choice == _BoardLayout.stack || autoStack) &&
+                          // Auto ≥5 : cercle (Lotus). En paysage très bas,
+                          // on empile pour éviter les bandeaux illisibles.
+                          if (choice == _BoardLayout.auto &&
+                              count >= 5 &&
+                              count <= maxTablePlayers &&
+                              (forced || !explicitList)) {
+                            // Sous ~640 px de haut, le cercle 5–8 déborde :
+                            // on empile en compact (PV + Cdt).
+                            if (constraints.maxHeight < 640) {
+                              return stacked(minimal: true);
+                            }
+                            return circle(minimal: minimalBand);
+                          }
+                          if (choice == _BoardLayout.stack &&
                               count >= 2 &&
                               count <= maxTablePlayers &&
                               (forced || !explicitList)) {
-                            return stacked();
+                            // Empilé : bandeaux courts → PV + Cdt seulement.
+                            return stacked(minimal: true);
                           }
                           if (choice == _BoardLayout.phone &&
                               count >= 5 &&
                               count <= maxTablePlayers) {
-                            return _FourSides(
-                              plan: pokerPlan(count).oriented(
-                                game.seatShift,
-                                count,
-                              ),
-                              controller: widget.controller,
-                              haptic: widget.settings.haptic,
-                              showTips: widget.settings.beginnerTips,
-                            );
+                            return circle(minimal: minimalBand);
                           }
                           if (choice == _BoardLayout.phone && count <= 2) {
                             return _TwoSides(
@@ -1321,35 +1391,36 @@ class _Bar extends StatelessWidget {
             help: beginnerTips ? tipDice : null,
             onPressed: onDice,
           ),
-          PopupMenuButton<CastTone>(
-            tooltip: context.t('bar_animations'),
-            padding: EdgeInsets.zero,
-            onSelected: onCast,
-            itemBuilder: (context) {
-              final current = sharedCast(controller.game.players);
-              return [
-                for (final choice in CastTone.values)
-                  PopupMenuItem(
-                    value: choice,
-                    child: Text(
-                      choice == current
-                          ? '${castToneLabel(choice)}  · actuel'
-                          : castToneLabel(choice),
+          if (onCast != null)
+            PopupMenuButton<CastTone>(
+              tooltip: context.t('bar_animations'),
+              padding: EdgeInsets.zero,
+              onSelected: onCast,
+              itemBuilder: (context) {
+                final current = sharedCast(controller.game.players);
+                return [
+                  for (final choice in CastTone.values)
+                    PopupMenuItem(
+                      value: choice,
+                      child: Text(
+                        choice == current
+                            ? '${castToneLabel(choice)}  · actuel'
+                            : castToneLabel(choice),
+                      ),
                     ),
+                ];
+              },
+              child: SizedBox(
+                width: slot,
+                height: 48,
+                child: Center(
+                  child: CinemaCameraIcon(
+                    color: IconTheme.of(context).color ?? Colors.white,
+                    size: 22,
                   ),
-              ];
-            },
-            child: SizedBox(
-              width: slot,
-              height: 48,
-              child: Center(
-                child: CinemaCameraIcon(
-                  color: IconTheme.of(context).color ?? Colors.white,
-                  size: 22,
                 ),
               ),
             ),
-          ),
           if (layouts.isNotEmpty || onPhoneMode != null || onOptionNames != null)
             HelpTip(
               enabled: beginnerTips,
@@ -1447,22 +1518,22 @@ class _Bar extends StatelessWidget {
                 value: _Menu.tips,
                 child: Text(
                   beginnerTips
-                      ? 'Désactiver les bulles d’aide'
-                      : 'Activer les bulles d’aide',
+                      ? context.t('menu_tips_off')
+                      : context.t('menu_tips_on'),
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.history,
-                child: Text('Historique & journal'),
+                child: Text(context.t('menu_history_journal')),
               ),
               PopupMenuItem(
                 value: _Menu.transfer,
                 child: Text(context.t('menu_transfer_qr')),
               ),
               if (!controller.game.tournament)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: _Menu.search,
-                  child: Text('Recherche de carte'),
+                  child: Text(context.t('menu_card_search')),
                 ),
               PopupMenuItem(
                 value: _Menu.settings,
@@ -1483,9 +1554,9 @@ class _Bar extends StatelessWidget {
                         : _layoutName(layout, controller.game.players.length),
                   ),
                 ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: _Menu.rotate,
-                child: Text('Tourner les places'),
+                child: Text(context.t('menu_rotate_seats')),
               ),
               PopupMenuItem(
                 value: _Menu.shuffle,
@@ -2557,12 +2628,14 @@ class _HorizontalBands extends StatelessWidget {
     required this.controller,
     required this.haptic,
     required this.showTips,
+    this.minimal = false,
   });
 
   final SeatingPlan plan;
   final GameController controller;
   final bool haptic;
   final bool showTips;
+  final bool minimal;
 
   @override
   Widget build(BuildContext context) {
@@ -2587,6 +2660,7 @@ class _HorizontalBands extends StatelessWidget {
           haptic: haptic,
           showTips: showTips,
           band: true,
+          minimal: minimal,
         ),
       ),
     );
@@ -2986,12 +3060,14 @@ class _FourSides extends StatelessWidget {
     required this.controller,
     required this.haptic,
     required this.showTips,
+    this.minimal = false,
   });
 
   final SeatingPlan plan;
   final GameController controller;
   final bool haptic;
   final bool showTips;
+  final bool minimal;
 
   @override
   Widget build(BuildContext context) {
@@ -3005,10 +3081,10 @@ class _FourSides extends StatelessWidget {
         if (single) {
           final width = constraints.maxWidth;
           final height = constraints.maxHeight;
-          var band = math.min(height * 0.28, 150.0);
+          var band = math.min(height * 0.36, 170.0);
           var side = math.min(width * 0.24, 220.0);
           if (band * 2 + 88 > height) {
-            band = math.max(48.0, (height - 88) / 2);
+            band = math.max(56.0, (height - 88) / 2);
           }
           if (side * 2 + 72 > width) {
             side = math.max(56.0, (width - 72) / 2);
@@ -3062,11 +3138,15 @@ class _FourSides extends StatelessWidget {
         final side = (constraints.maxWidth * 0.3)
             .clamp(72.0, roomForCenter > 72 ? roomForCenter : 72.0)
             .clamp(72.0, 320.0);
+        // Paysage bas : plus de hauteur N/S, côtés un peu plus étroits.
+        final northFlex = tight ? 4 : 5;
+        final midFlex = tight ? 8 : 6;
+        final southFlex = tight ? 4 : 5;
         return Column(
           children: [
             if (plan.north.isNotEmpty)
               Expanded(
-                flex: tight ? 3 : 5,
+                flex: northFlex,
                 child: Row(
                   children: [
                     for (final index in plan.north)
@@ -3075,26 +3155,38 @@ class _FourSides extends StatelessWidget {
                 ),
               ),
             Expanded(
-              flex: tight ? 10 : 6,
+              flex: midFlex,
               child: Row(
                 children: [
                   if (tight)
-                    SizedBox(width: side, child: _sideColumn(plan.westTopToBottom, 1))
+                    SizedBox(
+                      width: side * 0.9,
+                      child: _sideColumn(plan.westTopToBottom, 1),
+                    )
                   else
-                    Expanded(flex: 5, child: _sideColumn(plan.westTopToBottom, 1)),
+                    Expanded(
+                      flex: 5,
+                      child: _sideColumn(plan.westTopToBottom, 1),
+                    ),
                   const Expanded(
                     flex: 3,
                     child: SizedBox.expand(),
                   ),
                   if (tight)
-                    SizedBox(width: side, child: _sideColumn(plan.eastTopToBottom, 3))
+                    SizedBox(
+                      width: side * 0.9,
+                      child: _sideColumn(plan.eastTopToBottom, 3),
+                    )
                   else
-                    Expanded(flex: 5, child: _sideColumn(plan.eastTopToBottom, 3)),
+                    Expanded(
+                      flex: 5,
+                      child: _sideColumn(plan.eastTopToBottom, 3),
+                    ),
                 ],
               ),
             ),
             Expanded(
-              flex: tight ? 3 : 5,
+              flex: southFlex,
               child: Row(
                 children: [
                   for (final index in plan.south)
@@ -3128,6 +3220,70 @@ class _FourSides extends StatelessWidget {
           haptic: haptic,
           showTips: showTips,
           band: true,
+          minimal: minimal,
+        ),
+      ),
+    );
+  }
+}
+
+/// Invite à réunir 2 ou 3 téléphones pour une grande table.
+class _NeedPhonesGate extends StatelessWidget {
+  const _NeedPhonesGate({
+    required this.needed,
+    required this.players,
+    this.onOpenLink,
+  });
+
+  final int needed;
+  final int players;
+  final VoidCallback? onOpenLink;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = needed >= 3
+        ? 'Trois téléphones pour $players joueurs'
+        : 'Deux téléphones pour $players joueurs';
+    final body = needed >= 3
+        ? 'Réunis trois téléphones en un grand carré, répartis autour de la table. '
+            'Chaque appareil affiche un côté (A, B ou C).'
+        : 'Pose deux téléphones côte à côte pour former un carré. '
+            'Chaque appareil affiche un côté de la table (A ou B).';
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                body,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.75),
+                  height: 1.35,
+                ),
+              ),
+              if (onOpenLink != null) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: onOpenLink,
+                  icon: const Icon(Icons.phonelink),
+                  label: const Text('Relier les téléphones'),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

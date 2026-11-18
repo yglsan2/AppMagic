@@ -51,9 +51,10 @@ VfxFit vfxFit(double width, double height, double scale) {
     return const VfxFit(top: 0, bottom: 0, side: 0);
   }
   final shortest = math.min(width, height);
-  final factor = (scale / 1.2).clamp(0.9, 1.0);
-  final side = shortest * factor;
-  final pad = math.max(0.0, (height - side) / 2);
+  // Toujours un peu de marge haut/bas, même au palier fort.
+  final factor = (scale / 1.2).clamp(0.85, 0.96);
+  final side = math.min(shortest * factor, height - 2);
+  final pad = math.max(1.0, (height - side) / 2);
   return VfxFit(top: pad, bottom: pad, side: side);
 }
 

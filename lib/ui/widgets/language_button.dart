@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:mtg_table/l10n/app_lang.dart';
 import 'package:mtg_table/l10n/l10n.dart';
+import 'package:mtg_table/ui/widgets/lang_flag.dart';
 
 /// Bouton drapeau + liste déroulante des langues.
+/// Les drapeaux sont dessinés (pas d’emoji) : sous Windows les emoji
+/// sortent souvent en « FR », « GB », « LV ».
 class LanguageButton extends StatelessWidget {
   const LanguageButton({
     super.key,
@@ -29,7 +32,7 @@ class LanguageButton extends StatelessWidget {
             value: item,
             child: Row(
               children: [
-                Text(item.flag, style: const TextStyle(fontSize: 22)),
+                LangFlag(lang: item, width: 30, height: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -51,14 +54,17 @@ class LanguageButton extends StatelessWidget {
           ),
       ],
       child: compact
-          ? Text(lang.flag, style: const TextStyle(fontSize: 26))
+          ? Padding(
+              padding: const EdgeInsets.all(6),
+              child: LangFlag(lang: lang, width: 32, height: 22),
+            )
           : Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(lang.flag, style: const TextStyle(fontSize: 24)),
-                  const SizedBox(width: 6),
+                  LangFlag(lang: lang, width: 30, height: 20),
+                  const SizedBox(width: 8),
                   Text(
                     lang.nativeName,
                     style: const TextStyle(

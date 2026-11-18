@@ -729,6 +729,7 @@ class Game {
     this.bounty = false,
     this.bountyLevel = 0,
     this.seatShift = 0,
+    this.phonePanels = 1,
     this.handicapsEnabled = false,
     this.timerMode = TimerMode.alert,
     this.timersEnabled = false,
@@ -770,6 +771,8 @@ class Game {
   bool bounty;
   int bountyLevel;
   int seatShift;
+  /// 1 = un écran ; 2 = grande table (6–8) ; 3 = obligatoire (9–10).
+  int phonePanels;
   /// Handicaps de niveau de deck (PV de départ ajustés).
   bool handicapsEnabled;
   TimerMode timerMode;
@@ -808,6 +811,7 @@ class Game {
     List<List<String?>>? commanderArts,
     List<DeckBracket>? deckBrackets,
     List<int>? handicapLifeDeltas,
+    int phonePanels = 1,
   }) {
     final info = formatInfo(format);
     final life = startingLife ?? info.startingLife;
@@ -902,6 +906,7 @@ class Game {
       schemes: schemes,
       bounty: bounty,
       players: players,
+      phonePanels: phonePanels.clamp(1, 3),
       handicapsEnabled: useHandicaps,
     );
   }
@@ -1076,6 +1081,7 @@ class Game {
     'bounty': bounty,
     'bountyLevel': bountyLevel,
     'seatShift': seatShift,
+    'phonePanels': phonePanels,
     'handicapsEnabled': handicapsEnabled,
   };
 
@@ -1145,6 +1151,7 @@ class Game {
       bounty: json['bounty'] as bool? ?? false,
       bountyLevel: asInt(json['bountyLevel']),
       seatShift: asInt(json['seatShift']),
+      phonePanels: asInt(json['phonePanels'], 1).clamp(1, 3),
       handicapsEnabled: json['handicapsEnabled'] as bool? ?? false,
     );
   }

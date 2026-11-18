@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/domain/night_session.dart';
 import 'package:mtg_table/domain/night_transfer.dart';
 
@@ -103,7 +104,7 @@ class _NightStartSheetState extends State<_NightStartSheet> {
             const SizedBox(height: 14),
             FilledButton(
               onPressed: _create,
-              child: const Text('Ouvrir la soirée'),
+              child: Text(context.t('night_open')),
             ),
             const SizedBox(height: 18),
             const Divider(),
@@ -128,7 +129,7 @@ class _NightStartSheetState extends State<_NightStartSheet> {
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: _importNight,
-              child: const Text('Importer la soirée'),
+              child: Text(context.t('night_import')),
             ),
           ],
         ),

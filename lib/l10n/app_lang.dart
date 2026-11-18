@@ -10,13 +10,6 @@ enum AppLang {
 
   Locale get locale => Locale(code);
 
-  /// Drapeau emoji pour le bouton de langue.
-  String get flag => switch (this) {
-    AppLang.fr => '🇫🇷',
-    AppLang.en => '🇬🇧',
-    AppLang.lv => '🇱🇻',
-  };
-
   /// Nom de la langue dans cette langue.
   String get nativeName => switch (this) {
     AppLang.fr => 'Français',

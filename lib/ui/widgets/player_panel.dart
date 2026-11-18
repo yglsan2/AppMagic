@@ -136,6 +136,9 @@ class PlayerPanel extends StatelessWidget {
 
     /// Partie à 3 ou 4 : bandeau horizontal, sans pastilles, avec ciblage.
     this.band = false,
+
+    /// 6–8 sur un téléphone : PV + commandants seulement.
+    this.minimal = false,
   });
 
   final GameController controller;
@@ -144,6 +147,7 @@ class PlayerPanel extends StatelessWidget {
   final String? lifeTargetId;
   final bool showTips;
   final bool band;
+  final bool minimal;
 
   @override
   Widget build(BuildContext context) {
@@ -261,6 +265,7 @@ class PlayerPanel extends StatelessWidget {
                         startLife: startLife,
                         showTips: showTips,
                         endTurn: endTurn,
+                        minimal: minimal,
                       )
                     : _fitSeat(
                         width: width,
@@ -2583,11 +2588,34 @@ class _OwnLosses extends StatelessWidget {
         ],
       );
     }
-    return Column(
-      children: [
-        Expanded(child: life),
-        if (strip != null) strip,
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final h = constraints.maxHeight;
+        final stripWidget = strip;
+        final showStrip = stripWidget != null && h >= 96;
+        if (h < 72) {
+          return FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+            child: SizedBox(
+              width: constraints.maxWidth.clamp(80.0, 420.0),
+              height: 140,
+              child: Column(
+                children: [
+                  Expanded(child: life),
+                  if (stripWidget != null) stripWidget,
+                ],
+              ),
+            ),
+          );
+        }
+        return Column(
+          children: [
+            Expanded(child: life),
+            if (showStrip) stripWidget,
+          ],
+        );
+      },
     );
   }
 }
@@ -3273,6 +3301,7 @@ class _BandSeat extends StatelessWidget {
     required this.startLife,
     required this.showTips,
     this.endTurn,
+    this.minimal = false,
   });
 
   final GameController controller;
@@ -3283,6 +3312,7 @@ class _BandSeat extends StatelessWidget {
   final int startLife;
   final bool showTips;
   final Widget? endTurn;
+  final bool minimal;
 
   Widget _body({required bool showStrip, required ScorePane pane}) {
     final own = pane != ScorePane.foes;
@@ -3291,16 +3321,17 @@ class _BandSeat extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(6, 2, 6, 2),
       child: Column(
         children: [
-          _SeatOptions(
-            controller: controller,
-            player: player,
-            color: color,
-            haptic: haptic,
-            showTips: showTips,
-            full: pane != ScorePane.foes,
-          ),
+          if (!minimal)
+            _SeatOptions(
+              controller: controller,
+              player: player,
+              color: color,
+              haptic: haptic,
+              showTips: showTips,
+              full: pane != ScorePane.foes,
+            ),
           SizedBox(
-            height: 48,
+            height: minimal ? 36 : 48,
             child: _BandHeader(
               controller: controller,
               player: player,
@@ -3310,6 +3341,7 @@ class _BandSeat extends StatelessWidget {
               startLife: startLife,
               showTips: showTips,
               ownLife: !own,
+              minimal: minimal,
             ),
           ),
           if (own && foes)
@@ -3360,26 +3392,43 @@ class _BandSeat extends StatelessWidget {
         final height = constraints.maxHeight;
         final showStrip = controller.game.trackCommanderDamage;
         final pane = SeatPanes.paneOf(context, player.id);
+        Widget body() => _body(showStrip: showStrip, pane: pane);
+        // Bandeau très bas (empilé 5–8 en paysage) : on dessine à taille
+        // lisible puis on réduit, sans overflow Flutter.
+        if (height.isFinite && height > 0 && height < 100) {
+          return FittedBox(
+            fit: BoxFit.contain,
+            alignment: Alignment.center,
+            child: SizedBox(
+              width: width.isFinite && width > 200 ? width : 320,
+              height: 160,
+              child: body(),
+            ),
+          );
+        }
         // Mes pertes : le pad et les commandants remplissent le rectangle.
         // Sur téléphone en 4 quarts, un FittedBox centrifié laissait un
         // bloc rikiki au milieu de chaque espace.
         if (pane == ScorePane.own) {
-          return _body(showStrip: showStrip, pane: pane);
+          return body();
         }
-        final options = seatOptionsExtent(
-          controller.game,
-          player,
-          full: pane != ScorePane.foes,
-          names: OptionCaption.of(context),
-        );
+        final options = minimal
+            ? 0.0
+            : seatOptionsExtent(
+                controller.game,
+                player,
+                full: pane != ScorePane.foes,
+                names: OptionCaption.of(context),
+              );
         // Anciens modes (Les deux / Adversaires) : zoom si trop étroit.
+        // Siège large (paysage) : on remplit la largeur, même si la hauteur
+        // est juste — le console s’adapte.
         const designW = 300.0;
         final designH = (pane == ScorePane.both ? 380.0 : 210.0) + options;
         final tight = !width.isFinite ||
             !height.isFinite ||
-            width < designW ||
-            height < designH;
-        if (!tight) return _body(showStrip: showStrip, pane: pane);
+            (width < designW && height < designH);
+        if (!tight) return body();
         final boxW = width.isFinite && width > designW ? width : designW;
         final boxH = height.isFinite && height > designH ? height : designH;
         return FittedBox(
@@ -3388,7 +3437,7 @@ class _BandSeat extends StatelessWidget {
           child: SizedBox(
             width: boxW,
             height: boxH,
-            child: _body(showStrip: showStrip, pane: pane),
+            child: body(),
           ),
         );
       },
@@ -3406,6 +3455,7 @@ class _BandHeader extends StatelessWidget {
     required this.startLife,
     required this.showTips,
     this.ownLife = true,
+    this.minimal = false,
   });
 
   final GameController controller;
@@ -3416,26 +3466,30 @@ class _BandHeader extends StatelessWidget {
   final int startLife;
   final bool showTips;
   final bool ownLife;
+  final bool minimal;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final button = constraints.maxWidth < 210
-            ? 32.0
-            : constraints.maxWidth < 280
+        final width = constraints.maxWidth;
+        final button = width < 210
+            ? 28.0
+            : width < 280
             ? 36.0
             : 44.0;
+        // Cercle 5–8 / mode compact : pas la place pour Cdt + cast + roue.
+        final compact = minimal || width < 280;
         return Row(
           children: [
             CircleAvatar(
-              radius: 12,
+              radius: compact ? 10 : 12,
               backgroundColor: active ? color : color.withValues(alpha: 0.45),
               child: Text(
                 playerInitial(player.name),
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.black,
-                  fontSize: 12,
+                  fontSize: compact ? 11 : 12,
                   fontWeight: FontWeight.w900,
                 ),
               ),
@@ -3456,7 +3510,7 @@ class _BandHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    fontSize: 14,
+                    fontSize: compact ? 12 : 14,
                     color: active
                         ? Colors.white
                         : Colors.white.withValues(alpha: 0.55),
@@ -3464,7 +3518,52 @@ class _BandHeader extends StatelessWidget {
                 ),
               ),
             ),
-            if (ownLife) ...[
+            if (ownLife && compact)
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          context.t('my_life'),
+                          style: TextStyle(
+                            fontSize: 8,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                            color: color.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        DangerLifeDisplay(
+                          life: player.life,
+                          startingLife: startLife,
+                          compact: true,
+                          tight: true,
+                          fontSize: 22,
+                          lifeKey:
+                              ValueKey('life-pad-${player.id}-${player.id}'),
+                          onTap: () => showAmountSheet(
+                            context,
+                            title: 'Mes PV',
+                            subtitle: '− enlève un point, + le rend.',
+                            listenable: controller,
+                            current: () =>
+                                controller.playerById(player.id).life,
+                            onDelta: (delta) =>
+                                controller.addLife(player.id, delta),
+                            onSet: (value) =>
+                                controller.setLife(player.id, value),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            if (!compact && ownLife) ...[
               Flexible(
                 flex: 2,
                 child: HelpTip(
@@ -3475,42 +3574,43 @@ class _BandHeader extends StatelessWidget {
                       '+ en rend un. Le gros compteur plus bas change '
                       'les joueurs choisis avec leur badge.',
                   child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        context.t('my_life'),
-                        style: TextStyle(
-                          fontSize: 9,
-                          height: 1,
-                          fontWeight: FontWeight.w800,
-                          color: color.withValues(alpha: 0.9),
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          context.t('my_life'),
+                          style: TextStyle(
+                            fontSize: 9,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                            color: color.withValues(alpha: 0.9),
+                          ),
                         ),
-                      ),
-                      DangerLifeDisplay(
-                        life: player.life,
-                        startingLife: startLife,
-                        compact: true,
-                        tight: true,
-                        fontSize: 32,
-                        lifeKey: ValueKey('life-pad-${player.id}-${player.id}'),
-                        onTap: () => showAmountSheet(
-                          context,
-                          title: 'Mes PV',
-                          subtitle: '− enlève un point, + le rend.',
-                          listenable: controller,
-                          current: () =>
-                              controller.playerById(player.id).life,
-                          onDelta: (delta) =>
-                              controller.addLife(player.id, delta),
-                          onSet: (value) =>
-                              controller.setLife(player.id, value),
+                        DangerLifeDisplay(
+                          life: player.life,
+                          startingLife: startLife,
+                          compact: true,
+                          tight: true,
+                          fontSize: 32,
+                          lifeKey:
+                              ValueKey('life-pad-${player.id}-${player.id}'),
+                          onTap: () => showAmountSheet(
+                            context,
+                            title: 'Mes PV',
+                            subtitle: '− enlève un point, + le rend.',
+                            listenable: controller,
+                            current: () =>
+                                controller.playerById(player.id).life,
+                            onDelta: (delta) =>
+                                controller.addLife(player.id, delta),
+                            onSet: (value) =>
+                                controller.setLife(player.id, value),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
                 ),
               ),
               _StepKey(
@@ -3538,41 +3638,43 @@ class _BandHeader extends StatelessWidget {
                 },
               ),
             ],
-            MyCommanderButton(
-              controller: controller,
-              player: player,
-              showTips: showTips,
-              size: button,
-            ),
-            _CastButton(
-              controller: controller,
-              player: player,
-              showTips: showTips,
-              size: button,
-            ),
-            HelpTip(
-              enabled: showTips,
-              longPress: false,
-              title: tipGear.title,
-              message: tipGear.message,
-              child: SeatNote(
-              message: showTips ? '' : 'Options',
-              child: RepeatTap(
-                repeat: false,
-                onTick: () => showCountersSheet(
-                  context,
-                  controller,
-                  player.id,
-                  tips: showTips,
-                ),
-                child: SizedBox(
-                  width: button,
-                  height: button,
-                  child: const Icon(Icons.settings, size: 22),
+            if (!compact) ...[
+              MyCommanderButton(
+                controller: controller,
+                player: player,
+                showTips: showTips,
+                size: button,
+              ),
+              _CastButton(
+                controller: controller,
+                player: player,
+                showTips: showTips,
+                size: button,
+              ),
+              HelpTip(
+                enabled: showTips,
+                longPress: false,
+                title: tipGear.title,
+                message: tipGear.message,
+                child: SeatNote(
+                  message: showTips ? '' : 'Options',
+                  child: RepeatTap(
+                    repeat: false,
+                    onTick: () => showCountersSheet(
+                      context,
+                      controller,
+                      player.id,
+                      tips: showTips,
+                    ),
+                    child: SizedBox(
+                      width: button,
+                      height: button,
+                      child: const Icon(Icons.settings, size: 22),
+                    ),
+                  ),
                 ),
               ),
-              ),
-            ),
+            ],
           ],
         );
       },
@@ -3674,15 +3776,22 @@ class _TurnConsoleState extends State<_TurnConsole> {
         : [for (final player in opponents) if (selected.contains(player.id)) player];
     const lifeSemantics = 'Enlever un point au profil choisi';
     const lifeJumpSemantics = 'Enlever cinq points au profil choisi';
-    return Column(
-      children: [
-        SizedBox(
-          height: 44,
-          child: Row(
-            children: [
-              Expanded(
-                child: HelpTip(
-                  enabled: widget.showTips,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final h = constraints.maxHeight;
+        // Priorité aux Cdt (− / +) : les cibles passent après si la place manque.
+        final showTargets = h >= 150;
+        final showCmd = widget.showStrip && h >= 52;
+        return Column(
+          children: [
+            if (showTargets)
+              SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: HelpTip(
+                        enabled: widget.showTips,
                   longPress: false,
                   title: 'Adversaires',
                   message:
@@ -3732,7 +3841,8 @@ class _TurnConsoleState extends State<_TurnConsole> {
         Expanded(
           child: LayoutBuilder(
             builder: (context, box) {
-              final stack = box.maxWidth < 300 && box.maxHeight >= 100;
+              final stack =
+                  box.maxWidth < 340 || box.maxHeight < 120;
               return Row(
             children: [
               HelpTip(
@@ -3810,7 +3920,7 @@ class _TurnConsoleState extends State<_TurnConsole> {
             },
           ),
         ),
-        if (widget.showStrip)
+        if (showCmd)
           _BandCmdStrip(
             controller: widget.controller,
             seat: widget.seat,
@@ -3827,7 +3937,9 @@ class _TurnConsoleState extends State<_TurnConsole> {
             alignment: Alignment.centerRight,
             child: widget.endTurn,
           ),
-      ],
+          ],
+        );
+      },
     );
   }
 }

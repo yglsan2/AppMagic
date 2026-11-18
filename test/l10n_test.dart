@@ -34,10 +34,9 @@ void main() {
     );
   });
 
-  test('drapeaux et noms natifs', () {
-    expect(AppLang.fr.flag, '🇫🇷');
-    expect(AppLang.en.flag, '🇬🇧');
-    expect(AppLang.lv.flag, '🇱🇻');
+  test('noms natifs des langues', () {
+    expect(AppLang.fr.nativeName, 'Français');
+    expect(AppLang.en.nativeName, 'English');
     expect(AppLang.lv.nativeName, 'Latviešu');
   });
 }

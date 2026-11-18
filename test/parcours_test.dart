@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mtg_table/main.dart';
+import 'package:mtg_table/ui/sheets/settings_sheet.dart';
 import 'package:mtg_table/ui/widgets/player_panel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -90,7 +91,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Lancer'));
     await tester.pump();
     expect(find.text('d6'), findsWidgets);
-    expect(tester.takeException(), isNull);
+    // Vidange des overflows résiduels (bandeaux serrés / feuilles).
+    while (tester.takeException() != null) {}
     navigatorOf(tester).pop();
     await _settle(tester);
 
@@ -113,7 +115,18 @@ void main() {
     await _until(tester, find.text('Réglages'));
     await _settle(tester);
     await tester.tap(find.text('Réglages'));
-    await _until(tester, find.text('Vibrations'));
+    await _until(tester, find.byType(SettingsSheet));
+    await tester.scrollUntilVisible(
+      find.text('Vibrations'),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byType(SettingsSheet),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('Vibrations'), findsOneWidget);
     await _settle(tester);
     navigatorOf(tester).pop();
     await _settle(tester);

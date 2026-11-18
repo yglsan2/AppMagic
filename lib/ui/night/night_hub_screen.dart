@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:flutter/services.dart';
 import 'package:mtg_table/domain/journal_event.dart';
 import 'package:mtg_table/domain/models.dart';
@@ -89,21 +90,21 @@ class _NightHubScreenState extends State<NightHubScreen> {
                     await Clipboard.setData(ClipboardData(text: payload));
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Code / récap copié')),
+                      SnackBar(content: Text(context.t('copy_code_recap'))),
                     );
                   },
                   icon: const Icon(Icons.copy),
-                  label: const Text('Copier code MTGN1'),
+                  label: Text(context.t('copy_code_mtgn1')),
                 ),
                 TextButton(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: text));
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Récap texte copié')),
+                      SnackBar(content: Text(context.t('copy_text_recap_done'))),
                     );
                   },
-                  child: const Text('Copier le récap texte'),
+                  child: Text(context.t('copy_text_recap')),
                 ),
                 TextButton(
                   onPressed: () async {
@@ -112,12 +113,12 @@ class _NightHubScreenState extends State<NightHubScreen> {
                     );
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('CSV copié — collez dans Excel / Sheets'),
+                      SnackBar(
+                        content: Text(context.t('copy_csv_done')),
                       ),
                     );
                   },
-                  child: const Text('Copier le CSV classement'),
+                  child: Text(context.t('copy_csv_standings')),
                 ),
               ],
             ),
@@ -130,8 +131,8 @@ class _NightHubScreenState extends State<NightHubScreen> {
   Future<void> _addPlayer() async {
     final name = await askName(
       context,
-      title: 'Joueur de la soirée',
-      hint: 'Prénom',
+      title: context.t('night_player_of'),
+      hint: context.t('night_first_name'),
     );
     if (name == null) return;
     await widget.onChanged((n) => n.addPlayer(name));
@@ -203,7 +204,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
                       );
                       if (context.mounted) Navigator.pop(context);
                     },
-                    child: const Text('Enregistrer la table'),
+                    child: Text(context.t('night_save_table')),
                   ),
                 ],
               ),
@@ -221,7 +222,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
     }
     if (pod.playerNames.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Assignez des joueurs à cette table.')),
+        SnackBar(content: Text(context.t('night_assign_players'))),
       );
       await _configurePod(pod);
       return;
@@ -251,9 +252,10 @@ class _NightHubScreenState extends State<NightHubScreen> {
             : fromProfile.commanders,
       );
     }
+    final n = pod.playerNames.length;
     final game = Game.start(
       format: MatchFormat.commander,
-      playerCount: pod.playerNames.length,
+      playerCount: n,
       names: pod.playerNames,
       colors: colors,
       commanderNames: commanderNames,
@@ -271,6 +273,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
       resetStormOnTurn: widget.settings.resetStormOnTurn,
       commanderThreshold: widget.settings.commanderThreshold,
       poisonThreshold: widget.settings.poisonThreshold,
+      phonePanels: n >= 9 ? 3 : 1,
     );
     await widget.onStartPod(pod.id, game);
   }
@@ -287,13 +290,13 @@ class _NightHubScreenState extends State<NightHubScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Stats & export',
+            tooltip: context.t('night_stats_export'),
             visualDensity: VisualDensity.compact,
             onPressed: () => showNightStatsSheet(context, night),
             icon: const Icon(Icons.bar_chart),
           ),
           IconButton(
-            tooltip: 'Partager',
+            tooltip: context.t('night_share'),
             visualDensity: VisualDensity.compact,
             onPressed: _share,
             icon: const Icon(Icons.ios_share),
@@ -305,25 +308,25 @@ class _NightHubScreenState extends State<NightHubScreen> {
                   await widget.onEndNight();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Soirée close.')),
+                      SnackBar(content: Text(context.t('night_closed'))),
                     );
                   }
                 case 'clear':
                   final ok = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
-                      title: const Text('Effacer la soirée ?'),
+                      title: Text(context.t('night_clear_title')),
                       content: const Text(
                         'Supprime le hub local (l’historique global reste).',
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Annuler'),
+                          child: Text(context.t('common_cancel')),
                         ),
                         FilledButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Effacer'),
+                          child: Text(context.t('privacy_wipe')),
                         ),
                       ],
                     ),
@@ -334,9 +337,9 @@ class _NightHubScreenState extends State<NightHubScreen> {
                   }
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'end', child: Text('Clore la soirée')),
-              PopupMenuItem(value: 'clear', child: Text('Effacer le hub')),
+            itemBuilder: (context) => [
+              PopupMenuItem(value: 'end', child: Text(context.t('night_end'))),
+              PopupMenuItem(value: 'clear', child: Text(context.t('night_clear_hub'))),
             ],
           ),
         ],
@@ -395,7 +398,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
               ),
               TextButton(
                 onPressed: () => showNightStatsSheet(context, night),
-                child: const Text('Détail'),
+                child: Text(context.t('night_detail')),
               ),
             ],
           ),
@@ -458,7 +461,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
                 TextButton.icon(
                   onPressed: () => widget.onChanged((n) => n.addPod()),
                   icon: const Icon(Icons.add),
-                  label: const Text('Table'),
+                  label: Text(context.t('night_table')),
                 ),
             ],
           ),
@@ -485,13 +488,13 @@ class _NightHubScreenState extends State<NightHubScreen> {
                         _PodBadge(status: pod.status),
                         if (night.isOpen)
                           IconButton(
-                            tooltip: 'Joueurs',
+                            tooltip: context.t('night_players'),
                             onPressed: () => _configurePod(pod),
                             icon: const Icon(Icons.group_outlined),
                           ),
                         if (night.isOpen && night.pods.length > 1)
                           IconButton(
-                            tooltip: 'Retirer',
+                            tooltip: context.t('night_remove'),
                             onPressed: () =>
                                 widget.onChanged((n) => n.removePod(pod.id)),
                             icon: const Icon(Icons.close),
@@ -544,7 +547,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
                 TextButton.icon(
                   onPressed: _addPlayer,
                   icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Joueur'),
+                  label: Text(context.t('night_player')),
                 ),
             ],
           ),
@@ -588,7 +591,7 @@ class _NightHubScreenState extends State<NightHubScreen> {
             for (final game in night.games.take(15))
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(game.winner ?? 'Sans vainqueur'),
+                title: Text(game.winner ?? context.t('night_no_winner')),
                 subtitle: Text(
                   '${game.format} · ${game.players.join(', ')}',
                 ),

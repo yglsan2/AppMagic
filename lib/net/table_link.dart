@@ -849,7 +849,10 @@ class TableLinkController extends ChangeNotifier {
   }
 
   /// Quatre téléphones, en Wi-Fi Direct, sans le réseau du lieu.
-  Future<bool> hostDirect(Map<String, dynamic> session) async {
+  Future<bool> hostDirect(
+    Map<String, dynamic> session, {
+    int? maxPhones,
+  }) async {
     final opened = await _directStart();
     if (opened == null) {
       status =
@@ -862,7 +865,7 @@ class TableLinkController extends ChangeNotifier {
         session,
         bindPort: directTablePort,
         announce: opened.address,
-        maxPhones: directPhoneCap,
+        maxPhones: (maxPhones ?? directPhoneCap).clamp(1, directPhoneCap),
       );
     } on Object {
       await releaseTableNetwork();

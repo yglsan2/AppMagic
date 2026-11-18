@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mtg_table/domain/game_controller.dart';
 import 'package:mtg_table/domain/models.dart';
+import 'package:mtg_table/domain/table_panels.dart';
 import 'package:mtg_table/net/table_link.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 import 'package:mtg_table/ui/widgets/option_glyphs.dart';
@@ -112,7 +113,12 @@ class _TableLinkSheet extends StatelessWidget {
               FilledButton.icon(
                 onPressed: link.searching
                     ? null
-                    : () => link.hostTable(controller.exportSession()),
+                    : () => link.hostTable(
+                        controller.exportSession(),
+                        maxPhones: game.phonePanels > 1
+                            ? game.phonePanels
+                            : null,
+                      ),
                 icon: const Icon(Icons.wifi),
                 label: const Text('Créer la table'),
               ),
@@ -148,7 +154,12 @@ class _TableLinkSheet extends StatelessWidget {
               FilledButton.icon(
                 onPressed: link.searching
                     ? null
-                    : () => link.hostDirect(controller.exportSession()),
+                    : () => link.hostDirect(
+                        controller.exportSession(),
+                        maxPhones: game.phonePanels > 1
+                            ? game.phonePanels
+                            : null,
+                      ),
                 icon: const Icon(Icons.wifi_tethering),
                 label: const Text('Ouvrir le groupe'),
               ),
@@ -506,14 +517,14 @@ class LinkedSeatPicker extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       children: [
         const Text(
-          'Ce téléphone joue quel siège ?',
+          'Qui joue sur ce téléphone ?',
           style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 8),
         Text(
-          'Votre siège prend l’écran. Les autres restent en bandeau, '
-          'avec leurs compteurs. Pour garder tout le monde sur cet écran, '
-          'touchez les deux mains, puis « La table entière ».',
+          'Ton compteur prend l’écran. Les autres restent en bandeau. '
+          'Pour garder tout le monde sur cet écran, touchez les deux mains, '
+          'puis « La table entière ».',
           style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
         ),
         const SizedBox(height: 12),
@@ -535,6 +546,74 @@ class LinkedSeatPicker extends StatelessWidget {
             trailing: FilledButton(
               onPressed: () => link.claim(player.id),
               child: const Text('C’est moi'),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Grande table multi-téléphones : choisir le panneau A / B / C.
+class LinkedPanelPicker extends StatelessWidget {
+  const LinkedPanelPicker({
+    super.key,
+    required this.controller,
+    required this.link,
+    required this.panelCount,
+  });
+
+  final GameController controller;
+  final TableLinkController link;
+  final int panelCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final game = controller.game;
+    final taken = <int>{};
+    for (final entry in link.seats.entries) {
+      if (entry.key == link.deviceId) continue;
+      final idx = panelIndexFromSeat(entry.value);
+      if (idx != null) taken.add(idx);
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      children: [
+        const Text(
+          'Quel côté pour ce téléphone ?',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Posez les téléphones côte à côte pour former un grand carré. '
+          'Chaque appareil affiche une tranche de la table.',
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.72)),
+        ),
+        const SizedBox(height: 12),
+        for (var i = 0; i < panelCount; i++)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              backgroundColor: playerColor(i),
+              child: Text(
+                panelLabel(i),
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            title: Text('Côté ${panelLabel(i)}'),
+            subtitle: Text(
+              '${panelSeatIndexes(players: game.players.length, panelIndex: i, panelCount: panelCount, shift: game.seatShift).length} joueurs',
+            ),
+            trailing: FilledButton(
+              onPressed: taken.contains(i)
+                  ? null
+                  : () {
+                      link.setCenter(false);
+                      link.claim(panelSeatId(i));
+                    },
+              child: Text(taken.contains(i) ? 'Pris' : 'Ici'),
             ),
           ),
       ],

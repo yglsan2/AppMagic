@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:mtg_table/l10n/l10n.dart';
 import 'package:mtg_table/domain/models.dart';
 import 'package:mtg_table/theme/app_theme.dart';
 
@@ -197,22 +198,22 @@ class _FirstPlayerDrawState extends State<FirstPlayerDraw>
                 if (_winner == null)
                   FilledButton(
                     onPressed: _rolling ? null : _draw,
-                    child: Text(_rolling ? 'Tirage…' : 'Tirer au sort'),
+                    child: Text(_rolling ? context.t('draw_rolling') : context.t('draw_roll')),
                   )
                 else ...[
                   FilledButton(
                     onPressed: () => widget.onPicked(_winner!),
-                    child: Text('C’est parti · ${winner!.name}'),
+                    child: Text(context.t('draw_go', {'name': winner!.name})),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton(
                     onPressed: _rolling ? null : _draw,
-                    child: const Text('Retirer'),
+                    child: Text(context.t('draw_again')),
                   ),
                 ],
                 TextButton(
                   onPressed: _rolling ? null : widget.onSkip,
-                  child: const Text('Passer'),
+                  child: Text(context.t('draw_skip')),
                 ),
               ],
             ),
